@@ -81,7 +81,15 @@ const sizeCm = p => [(p.box[2]-p.box[0])/PX*pieceScale(p), (p.box[3]-p.box[1])/P
 const isRib = p => p.id==='rib' || /^Neck rib/.test(p.label||'');
 const mainPieces = () => pieces.filter(p=>!p.minor);
 const _pc = document.createElement('canvas').getContext('2d');
-const pieceAt = (x,y) => pieces.find(p=>_pc.isPointInPath(p.path,x,y)) || null;
+const pieceAt = (x,y) => {
+  let best=null, bestA=-1;
+  for (const p of pieces){
+    if (!_pc.isPointInPath(p.path,x,y)) continue;
+    const a=(p.box[2]-p.box[0])*(p.box[3]-p.box[1]);
+    if (a>bestA){ best=p; bestA=a; }
+  }
+  return best;
+};
 // display layout for the pattern view: main pieces shelf-packed and readable (the print sheet keeps true UV placement)
 const ORDER = ['front','back','sleeveR','sleeveRb','sleeveL','sleeveLb'];
 const SHOWN = pieces.filter(p=>!p.minor && !/facing/.test(p.label)).sort((a,b)=>{ const ia=ORDER.indexOf(a.id), ib=ORDER.indexOf(b.id); if(ia>=0||ib>=0) return (ia<0?99:ia)-(ib<0?99:ib); return (b.box[2]-b.box[0])*(b.box[3]-b.box[1])-(a.box[2]-a.box[0])*(a.box[3]-a.box[1]); });
@@ -136,21 +144,105 @@ function cloneLayer(L){
   const o = {font:L.font, color:L.color, rot:L.rot, opacity:L.opacity, flipX:L.flipX, flipY:L.flipY, inside:L.inside};
   const nx = L.x + 8*PX, ny = L.y + 8*PX, wCm = L.w/PX;
   if (L.kind==='text') return addText(L.text, nx, ny, wCm, o);
+  if (L.kind==='brush'){
+    const c = makeBrushCanvas(); c.getContext('2d').drawImage(L.src,0,0);
+    return addBrushLayer({src:c, name:(L.name||'Brush')+' copy', opacity:L.opacity, inside:L.inside});
+  }
   return addImage(L.src, (L.name||'Image')+' copy', nx, ny, wCm, o);
 }
-const layerName = L => L.kind==='text' ? L.text.replace(/\n/g,' ') : L.name;
-const layerPiece = L => { const p = pieceAt(L.x, L.y); return p ? p.label : 'Off pattern'; };
+const layerName = L => L.kind==='text' ? L.text.replace(/\n/g,' ') : (L.kind==='brush' ? (L.name||'Brush') : L.name);
+const layerPiece = L => { if (L.kind==='brush') return 'Paint sheet'; const p = pieceAt(L.x, L.y); return p ? p.label : 'Off pattern'; };
 const cur = () => S.layers.find(l=>l.id===S.sel);
+
+// ---------- brush ----------
+const BRUSH = { on:false, eraser:false, color:'#111111', sizeCm:1.2, opacity:1, hardness:0.85 };
+function makeBrushCanvas(){
+  const c = document.createElement('canvas'); c.width = c.height = TEX;
+  const g = c.getContext('2d'); g.clearRect(0,0,TEX,TEX); return c;
+}
+function addBrushLayer(o={}){
+  const c = o.src || makeBrushCanvas();
+  const L = {id:++uid, kind:'brush', name:o.name||'Brush paint', src:c, aspect:1, x:TEX/2, y:TEX/2, w:TEX, rot:0, opacity:o.opacity??1, flipX:false, flipY:false, locked:!!o.locked, visible:true, inside:!!o.inside};
+  S.layers.push(L); return L;
+}
+function ensureBrushLayer(inside){
+  let L = [...S.layers].reverse().find(l=>l.kind==='brush' && !!l.inside===!!inside && l.visible && !l.locked);
+  if (L) return L;
+  if (!ensureLayerRoom()) return null;
+  L = addBrushLayer({inside:!!inside});
+  select(L.id); renderLayers();
+  return L;
+}
+function brushRadiusPx(){ return Math.max(0.5, BRUSH.sizeCm * PX / 2); }
+function stampBrush(L, x, y){
+  if (!L || !L.src) return;
+  const g = L.src.getContext('2d');
+  const r = brushRadiusPx();
+  const hard = Math.max(0.05, Math.min(0.98, BRUSH.hardness));
+  const grad = g.createRadialGradient(x, y, Math.max(0.01, r*hard), x, y, Math.max(r, 1));
+  if (BRUSH.eraser){
+    g.save(); g.globalCompositeOperation = 'destination-out';
+    grad.addColorStop(0, `rgba(0,0,0,${BRUSH.opacity})`);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grad; g.beginPath(); g.arc(x,y,r,0,Math.PI*2); g.fill(); g.restore();
+  } else {
+    g.save(); g.globalCompositeOperation = 'source-over'; g.globalAlpha = BRUSH.opacity;
+    // parse hex colour
+    const hex = BRUSH.color.replace('#','');
+    const full = hex.length===3 ? hex.split('').map(c=>c+c).join('') : hex;
+    const rr = parseInt(full.slice(0,2),16), gg = parseInt(full.slice(2,4),16), bb = parseInt(full.slice(4,6),16);
+    grad.addColorStop(0, `rgba(${rr},${gg},${bb},1)`);
+    grad.addColorStop(1, `rgba(${rr},${gg},${bb},0)`);
+    g.fillStyle = grad; g.beginPath(); g.arc(x,y,r,0,Math.PI*2); g.fill(); g.restore();
+  }
+  L.thumb = null;
+}
+function strokeBrush(L, x0,y0,x1,y1){
+  const dist = Math.hypot(x1-x0,y1-y0);
+  const step = Math.max(1, brushRadiusPx() * 0.35);
+  if (dist < 0.01){ stampBrush(L, x1, y1); return; }
+  const n = Math.max(1, Math.ceil(dist/step));
+  for (let i=0;i<=n;i++){ const t=i/n; stampBrush(L, x0+(x1-x0)*t, y0+(y1-y0)*t); }
+}
+function setBrushMode(on){
+  BRUSH.on = !!on;
+  if ($('brushTool')) $('brushTool').setAttribute('aria-pressed', BRUSH.on);
+  if ($('brushPanel')) $('brushPanel').hidden = !BRUSH.on;
+  if (BRUSH.on){ setPlaceMode(null); pc.style.cursor = 'crosshair'; $('hint').textContent = 'Brush: paint on 2D pieces or rotate the 3D shirt and paint · E eraser · [ ] size'; }
+  else { pc.style.cursor = 'grab'; $('hint').textContent = 'Add text/photo/brush on the 2D pattern (or 3D) · drag across pieces · ⌘Z undo'; }
+}
+function moveLayerToPiece(L, pieceId){
+  const p = pieceById[pieceId]; if (!L || !p || L.kind==='brush' || L.locked) return;
+  L.x = (p.box[0]+p.box[2])/2; L.y = (p.box[1]+p.box[3])/2;
+  composeSheet(); renderLayers(); commit(); toast('Moved to '+p.label);
+}
 
 // ---------- undo / redo ----------
 const hist = [], fut = [];
-const snapshot = () => JSON.stringify({...S, layers:S.layers.map(l=>({...l, src:undefined, thumb:undefined, _k:l.id}))});
+const snapshot = () => JSON.stringify({...S, layers:S.layers.map(l=>{
+  const base = {...l, src:undefined, thumb:undefined, _k:l.id};
+  if (l.kind==='brush' && l.src){ try { base._dataUrl = l.src.toDataURL('image/png'); } catch(_){ base._dataUrl = null; } }
+  return base;
+})});
 const srcById = new Map();
 function commit(){ S.layers.forEach(l=>srcById.set(l.id+':'+(l.kind==='text'?l.text+l.font+l.color:''), l.src));
   const s = snapshot(); if (hist.at(-1) !== s){ hist.push(s); if(hist.length>80) hist.shift(); fut.length = 0; } updUndo(); }
-function restore(s){ const o = JSON.parse(s); const old = new Map(S.layers.map(l=>[l.id,l]));
-  Object.assign(S, o); S.layers = o.layers.map(l=>{ const prev = old.get(l.id); const L = {...l};
+function restore(s){ const o = JSON.parse(s); const oldMap = new Map(S.layers.map(l=>[l.id,l]));
+  Object.assign(S, o); S.layers = o.layers.map(l=>{ const prev = oldMap.get(l.id); const L = {...l}; delete L._dataUrl; delete L._k;
     if (L.kind==='text'){ if(prev && prev.text===L.text && prev.font===L.font && prev.color===L.color) { L.src=prev.src; L.aspect=prev.aspect; } else textBitmap(L); }
+    else if (L.kind==='brush'){
+      const c = makeBrushCanvas();
+      if (l._dataUrl){
+        // decode synchronously via Image only works async — keep previous pixels when possible, else blank then async refresh
+        if (prev && prev.src && prev.kind==='brush' && prev._lastUrl===l._dataUrl){ c.getContext('2d').drawImage(prev.src,0,0); }
+        else {
+          const im = new Image();
+          im.onload = ()=>{ c.getContext('2d').clearRect(0,0,TEX,TEX); c.getContext('2d').drawImage(im,0,0); L.thumb=null; composeSheet(); drawPattern(); };
+          im.src = l._dataUrl;
+        }
+      } else if (prev && prev.src && prev.kind==='brush'){ c.getContext('2d').drawImage(prev.src,0,0); }
+      L.src = c; L.aspect = 1; L._lastUrl = l._dataUrl || null;
+    }
     else L.src = (prev && prev.src) || srcById.get(L.id+':'); return L; });
   syncAllUI(); composeSheet(); renderLayers(); }
 function updUndo(){ $('undo').disabled = hist.length<2; $('redo').disabled = !fut.length; }
@@ -240,9 +332,15 @@ function paintBase(g){
 function paintLayers(g, inside){
   g.save(); g.clip(allPieces);
   for (const L of S.layers){ if(!L.visible || !!L.inside!==inside) continue;
-    g.save(); g.globalAlpha = L.opacity ?? 1; g.translate(L.x, L.y); g.rotate(L.rot*Math.PI/180);
-    const sx = L.flipX ? -1 : 1, sy = L.flipY ? -1 : 1; if (sx!==1||sy!==1) g.scale(sx, sy);
-    const w=L.w, h=L.w*L.aspect; g.drawImage(L.src,-w/2,-h/2,w,h); g.restore(); }
+    if (!L.src) continue;
+    g.save(); g.globalAlpha = L.opacity ?? 1;
+    if (L.kind==='brush'){ g.drawImage(L.src, 0, 0); }
+    else {
+      g.translate(L.x, L.y); g.rotate(L.rot*Math.PI/180);
+      const sx = L.flipX ? -1 : 1, sy = L.flipY ? -1 : 1; if (sx!==1||sy!==1) g.scale(sx, sy);
+      const w=L.w, h=L.w*L.aspect; g.drawImage(L.src,-w/2,-h/2,w,h);
+    }
+    g.restore(); }
   g.restore();
 }
 function paintWash(g){
@@ -304,8 +402,8 @@ function drawPattern(){
     pg.fillStyle='#e9ece4'; pg.font='600 12px "Familjen Grotesk", sans-serif'; pg.fillText(p.label, cx, by+17);
     pg.fillStyle='#9aa294'; pg.font='10.5px "JetBrains Mono", monospace'; pg.fillText(`${w.toFixed(0)} × ${h.toFixed(h<10?1:0)} cm`, cx, by+31); }
   const L = cur();
-  const off = L && offsetOf(L);
-  if (L && off && L.visible && !!L.inside===PV.inside){ const c = layerCorners(L).map(([x,y])=>toView(x+off[0],y+off[1]));
+  const off = L && L.kind!=='brush' && offsetOf(L);
+  if (L && L.kind!=='brush' && off && L.visible && !!L.inside===PV.inside){ const c = layerCorners(L).map(([x,y])=>toView(x+off[0],y+off[1]));
     pg.strokeStyle='#f2c14e'; pg.lineWidth=1.5; pg.setLineDash([]); pg.beginPath(); c.forEach(([x,y],i)=>i?pg.lineTo(x,y):pg.moveTo(x,y)); pg.closePath(); pg.stroke();
     pg.fillStyle='#f2c14e'; c.forEach(([x,y])=>pg.fillRect(x-4,y-4,8,8));
     // rotate handle above top edge midpoint
@@ -326,6 +424,7 @@ function drawPattern(){
 function rotHandleOf(L){ return L && L._rotHandle; }
 
 function hitLayer(x,y,inside){ for (let i=S.layers.length-1;i>=0;i--){ const L=S.layers[i]; if(!L.visible || !!L.inside!==inside) continue;
+  if (L.kind==='brush') continue; // full-sheet paint — select from layer list
   const a=-L.rot*Math.PI/180, dx=x-L.x, dy=y-L.y, lx=dx*Math.cos(a)-dy*Math.sin(a), ly=dx*Math.sin(a)+dy*Math.cos(a);
   if (Math.abs(lx)<=L.w/2 && Math.abs(ly)<=L.w*L.aspect/2) return L; } return null; }
 
@@ -333,11 +432,12 @@ let pdrag = null;
 let placeMode = null; // 'text' | 'image' | null
 function setPlaceMode(mode){
   placeMode = mode;
+  if (mode) setBrushMode(false);
   const on = !!mode;
   $('placeBanner').hidden = !on;
   $('placeBanner').textContent = mode==='text' ? 'Click a pattern piece to place text…' : mode==='image' ? 'Click a pattern piece to place a photo…' : '';
   $('patternPane').classList.toggle('placing', on);
-  pc.style.cursor = on ? 'crosshair' : 'grab';
+  pc.style.cursor = on ? 'crosshair' : (BRUSH.on ? 'crosshair' : 'grab');
 }
 function snapLayer(L, sx, sy){
   PV.guides = [];
@@ -350,6 +450,16 @@ function snapLayer(L, sx, sy){
 }
 pc.addEventListener('pointerdown', e=>{
   const r = pc.getBoundingClientRect(), vx=e.clientX-r.left, vy=e.clientY-r.top; const [dx,dy] = toSheet(vx,vy);
+  if (BRUSH.on){
+    const hit = fromDisplay(dx,dy);
+    if (!hit){ toast('Paint on a pattern piece'); return; }
+    const L = ensureBrushLayer(PV.inside); if (!L) return;
+    select(L.id);
+    stampBrush(L, hit.sx, hit.sy);
+    pdrag = {mode:'brush', L, last:[hit.sx, hit.sy]};
+    composeSheet();
+    pc.setPointerCapture(e.pointerId); return;
+  }
   if (placeMode){
     const hit = fromDisplay(dx,dy);
     if (!hit){ toast('Click on a pattern piece'); return; }
@@ -366,29 +476,42 @@ pc.addEventListener('pointerdown', e=>{
       pendingPlace = {sx, sy}; setPlaceMode(null); $('file').click(); return;
     }
   }
-  const sel = cur(), off = sel && offsetOf(sel);
-  if (sel && !sel.locked && off && !!sel.inside===PV.inside){
+  const sel = cur(), off = sel && sel.kind!=='brush' && offsetOf(sel);
+  if (sel && sel.kind!=='brush' && !sel.locked && off && !!sel.inside===PV.inside){
     const rh = rotHandleOf(sel);
     if (rh && Math.hypot(rh[0]-vx, rh[1]-vy)<12){ pdrag={mode:'rotate', L:sel, off}; pc.setPointerCapture(e.pointerId); return; }
     const c = layerCorners(sel).map(([x,y])=>toView(x+off[0],y+off[1])); const hi = c.findIndex(([x,y])=>Math.hypot(x-vx,y-vy)<11);
     if (hi>=0){ pdrag={mode:'scale', L:sel, off, d0:Math.hypot(dx-off[0]-sel.x, dy-off[1]-sel.y), w0:sel.w}; pc.setPointerCapture(e.pointerId); return; }
   }
   const hit = fromDisplay(dx,dy); const L = hit && hitLayer(hit.sx,hit.sy,PV.inside);
-  if (L){ select(L.id); if (L.locked){ pdrag=null; return; } pdrag={mode:'move', L, off:[hit.p.dx,hit.p.dy], dx:hit.sx-L.x, dy:hit.sy-L.y}; }
+  if (L){
+    select(L.id); if (L.locked){ pdrag=null; return; }
+    // grab offset in DISPLAY space so dragging across packed pieces remaps UV correctly
+    pdrag={mode:'move', L, gdx: dx - (L.x + hit.p.dx), gdy: dy - (L.y + hit.p.dy), lastOff:[hit.p.dx, hit.p.dy]};
+  }
   else pdrag={mode:'pan', x:vx, y:vy, ox:PV.ox, oy:PV.oy};
   pc.setPointerCapture(e.pointerId);
 });
 pc.addEventListener('pointermove', e=>{
   const r = pc.getBoundingClientRect(), vx=e.clientX-r.left, vy=e.clientY-r.top; const [dx,dy] = toSheet(vx,vy);
   if (!pdrag){
-    if (placeMode){ pc.style.cursor='crosshair'; return; }
-    const sel = cur(), off = sel && offsetOf(sel);
+    if (placeMode || BRUSH.on){ pc.style.cursor='crosshair'; return; }
+    const sel = cur(), off = sel && sel.kind!=='brush' && offsetOf(sel);
     const rh = sel && !sel.locked && off && rotHandleOf(sel);
     if (rh && Math.hypot(rh[0]-vx, rh[1]-vy)<12){ pc.style.cursor='grab'; return; }
     const hit = fromDisplay(dx,dy); pc.style.cursor = hit && hitLayer(hit.sx,hit.sy,PV.inside)?'move':'grab'; return;
   }
+  if (pdrag.mode==='brush'){
+    const hit = fromDisplay(dx,dy);
+    if (hit){ strokeBrush(pdrag.L, pdrag.last[0], pdrag.last[1], hit.sx, hit.sy); pdrag.last=[hit.sx,hit.sy]; composeSheet(); }
+    return;
+  }
   if (pdrag.mode==='move'){
-    let nx = dx-pdrag.off[0]-pdrag.dx, ny = dy-pdrag.off[1]-pdrag.dy;
+    const hit = fromDisplay(dx,dy);
+    const off = hit ? [hit.p.dx, hit.p.dy] : (pdrag.lastOff || [0,0]);
+    if (hit) pdrag.lastOff = off;
+    let nx = (dx - pdrag.gdx) - off[0];
+    let ny = (dy - pdrag.gdy) - off[1];
     [nx,ny] = snapLayer(pdrag.L, nx, ny);
     pdrag.L.x = nx; pdrag.L.y = ny; composeSheet(); syncLayerUI();
   }
@@ -579,18 +702,31 @@ document.querySelectorAll('[data-cam]').forEach(b=>b.onclick=()=>setCam(b.datase
 $('resetView').onclick = ()=>{ userMoved = false; setCam('front'); };
 $('autoRot').onclick = ()=>{ controls.autoRotate = !controls.autoRotate; $('autoRot').setAttribute('aria-pressed', controls.autoRotate); };
 
-// drag prints directly on the 3D shirt (raycast → UV → sheet)
+// drag / paint directly on the 3D shirt (raycast → UV → sheet)
 const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
 function hitUV(e){ const r = glc.getBoundingClientRect(); ndc.set(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1);
   ray.setFromCamera(ndc, camera); const h = ray.intersectObjects(shirtMeshes, false)[0]; return h && h.uv ? [h.uv.x*TEX, h.uv.y*TEX] : null; }
 let gdrag = null;
-glc.addEventListener('pointerdown', e=>{ const uv = hitUV(e); if(!uv) return; const L = hitLayer(...uv, false); if(!L) return;
-  select(L.id); if(L.locked) return; gdrag = {L, piece:pieceAt(...uv), dx:uv[0]-L.x, dy:uv[1]-L.y}; controls.enabled = false; glc.setPointerCapture(e.pointerId); }, true);
-glc.addEventListener('pointermove', e=>{ if(!gdrag){ const uv=hitUV(e); glc.style.cursor = uv && hitLayer(...uv,false) ? 'move' : 'grab'; return; }
-  const uv = hitUV(e); if(!uv) return; const p = pieceAt(...uv); if(!p || p!==gdrag.piece) return;
-  gdrag.L.x = uv[0]-gdrag.dx; gdrag.L.y = uv[1]-gdrag.dy; composeSheet(); });
-glc.addEventListener('pointerup', ()=>{ if(gdrag){ gdrag=null; controls.enabled = true; renderLayers(); commit(); } });
-glc.addEventListener('dblclick', e=>{ const uv = hitUV(e); const L = cur(); if(uv && L && !L.inside){ L.x=uv[0]; L.y=uv[1]; composeSheet(); renderLayers(); commit(); } });
+glc.addEventListener('pointerdown', e=>{
+  const uv = hitUV(e); if(!uv) return;
+  if (BRUSH.on){
+    const L = ensureBrushLayer(false); if (!L) return;
+    select(L.id); stampBrush(L, uv[0], uv[1]);
+    gdrag = {mode:'brush', L, last:uv.slice()}; controls.enabled = false; glc.setPointerCapture(e.pointerId); composeSheet(); return;
+  }
+  const L = hitLayer(...uv, false); if(!L) return;
+  select(L.id); if(L.locked) return;
+  gdrag = {mode:'move', L, dx:uv[0]-L.x, dy:uv[1]-L.y}; controls.enabled = false; glc.setPointerCapture(e.pointerId);
+}, true);
+glc.addEventListener('pointermove', e=>{
+  if(!gdrag){ const uv=hitUV(e); glc.style.cursor = BRUSH.on ? (uv?'crosshair':'grab') : (uv && hitLayer(...uv,false) ? 'move' : 'grab'); return; }
+  const uv = hitUV(e); if(!uv) return;
+  if (gdrag.mode==='brush'){ strokeBrush(gdrag.L, gdrag.last[0], gdrag.last[1], uv[0], uv[1]); gdrag.last=uv.slice(); composeSheet(); return; }
+  // allow moving across pieces (front ↔ back ↔ sleeves) via UV
+  gdrag.L.x = uv[0]-gdrag.dx; gdrag.L.y = uv[1]-gdrag.dy; composeSheet();
+});
+glc.addEventListener('pointerup', ()=>{ if(gdrag){ const was=gdrag; gdrag=null; controls.enabled = true; renderLayers(); commit(); } });
+glc.addEventListener('dblclick', e=>{ const uv = hitUV(e); const L = cur(); if(uv && L && L.kind!=='brush' && !L.inside){ L.x=uv[0]; L.y=uv[1]; composeSheet(); renderLayers(); commit(); } });
 
 let useAO = true, turntable = null, recMirror = null;
 function render(){ if (useAO) composer.render(); else renderer.render(scene, camera); }
@@ -609,7 +745,15 @@ function loop(){ requestAnimationFrame(loop);
 
 // ---------- UI ----------
 function select(id){ S.sel = id; const L = cur(); if (L && !!L.inside!==PV.inside) $(L.inside?'pIn':'pOut').click(); renderLayers(); drawPattern(); }
-const thumbOf = L => L.thumb ||= (L.src.toDataURL ? L.src.toDataURL() : L.src.src);
+const thumbOf = L => {
+  if (L.thumb) return L.thumb;
+  if (L.kind==='brush' && L.src){
+    const t=document.createElement('canvas'); t.width=t.height=64; const g=t.getContext('2d');
+    g.fillStyle='#e8e6e0'; g.fillRect(0,0,64,64); g.drawImage(L.src,0,0,TEX,TEX,0,0,64,64);
+    L.thumb = t.toDataURL(); return L.thumb;
+  }
+  return L.thumb = (L.src && L.src.toDataURL ? L.src.toDataURL() : (L.src && L.src.src) || '');
+};
 function renderLayers(){
   const box = $('layers'); box.innerHTML = '';
   if (!S.layers.length){ box.innerHTML = '<p class="sub" style="margin:0">Nothing here yet. Add an image or text above.</p>'; }
@@ -632,12 +776,26 @@ function renderLayers(){
 function syncLayerUI(){
   const L = cur(); $('layerEdit').hidden = !L; $('layerTools').hidden = !L; if(!L) return;
   $('textEdit').hidden = L.kind!=='text'; $('imgEdit').hidden = L.kind!=='image';
+  const isBrush = L.kind==='brush';
+  if ($('lw')) $('lw').parentElement.hidden = isBrush;
+  if ($('lr')) $('lr').parentElement.hidden = isBrush;
+  if ($('movePieceRow')) $('movePieceRow').hidden = isBrush;
   if (L.kind==='text'){ if (document.activeElement!==$('textVal')) $('textVal').value = L.text.replace(/\n/g,' / '); $('textFont').value = L.font; $('textFont').style.fontFamily = `"${L.font}", sans-serif`; $('textColor').value = L.color; }
-  $('lw').value = (L.w/PX).toFixed(1); $('lwo').textContent = `${(L.w/PX).toFixed(1)} cm`;
-  $('lr').value = L.rot; $('lro').textContent = `${Math.round(L.rot)}°`;
+  if (!isBrush){
+    $('lw').value = (L.w/PX).toFixed(1); $('lwo').textContent = `${(L.w/PX).toFixed(1)} cm`;
+    $('lr').value = L.rot; $('lro').textContent = `${Math.round(L.rot)}°`;
+  }
   $('lop').value = Math.round((L.opacity??1)*100); $('lopO').textContent = `${Math.round((L.opacity??1)*100)}%`;
   $('lInside').checked = !!L.inside;
   $('lockLayer').textContent = L.locked ? 'Unlock' : 'Lock';
+  if ($('movePiece') && !isBrush){
+    const p = pieceAt(L.x,L.y);
+    const sel = $('movePiece');
+    if (!sel.options.length){
+      for (const p of SHOWN){ const o=document.createElement('option'); o.value=p.id; o.textContent=p.label; sel.appendChild(o); }
+    }
+    if (p) sel.value = p.id;
+  }
 }
 $('textVal').oninput = e=>{ const L=cur(); if(!L||L.locked) return; L.text = e.target.value.replace(/\s*\/\s*/g,'\n') || ' '; textBitmap(L); composeSheet(); renderLayers(); };
 $('textVal').onchange = commit;
@@ -653,9 +811,34 @@ $('dupLayer').onclick = ()=>{ const L=cur(); if(!L) return; if(!ensureLayerRoom(
 $('lockLayer').onclick = ()=>{ const L=cur(); if(!L) return; L.locked = !L.locked; renderLayers(); drawPattern(); commit(); };
 $('layerUp').onclick = ()=>{ const L=cur(); if(!L) return; const i=S.layers.indexOf(L); if(i<S.layers.length-1){ S.layers.splice(i,1); S.layers.splice(i+1,0,L); composeSheet(); renderLayers(); commit(); } };
 $('layerDown').onclick = ()=>{ const L=cur(); if(!L) return; const i=S.layers.indexOf(L); if(i>0){ S.layers.splice(i,1); S.layers.splice(i-1,0,L); composeSheet(); renderLayers(); commit(); } };
-$('addText').onclick = ()=>{ if(!ensureLayerRoom()) return; const f = pieceById.front.box; const L = addText('YOUR TEXT', (f[0]+f[2])/2, f[1]+24*PX, 20); select(L.id);
+$('addText').onclick = ()=>{ if(!ensureLayerRoom()) return; setBrushMode(false); const f = pieceById.front.box; const L = addText('YOUR TEXT', (f[0]+f[2])/2, f[1]+24*PX, 20); select(L.id);
   rebuildText(L).then(()=>{ composeSheet(); renderLayers(); commit(); }); composeSheet(); commit(); };
-$('addImage').onclick = ()=>{ if(!ensureLayerRoom()) return; pendingPlace = null; $('file').click(); };
+$('addImage').onclick = ()=>{ if(!ensureLayerRoom()) return; setBrushMode(false); pendingPlace = null; $('file').click(); };
+if ($('brushTool')) $('brushTool').onclick = ()=> setBrushMode(!BRUSH.on);
+if ($('brushColor')){ $('brushColor').value = BRUSH.color; $('brushColor').oninput = e=>{ BRUSH.color = e.target.value; }; }
+if ($('brushSize')){ $('brushSize').value = BRUSH.sizeCm; $('brushSizeO').textContent = BRUSH.sizeCm.toFixed(1)+' cm';
+  $('brushSize').oninput = e=>{ BRUSH.sizeCm = +e.target.value; $('brushSizeO').textContent = BRUSH.sizeCm.toFixed(1)+' cm'; }; }
+if ($('brushOp')){ $('brushOp').value = Math.round(BRUSH.opacity*100); $('brushOpO').textContent = Math.round(BRUSH.opacity*100)+'%';
+  $('brushOp').oninput = e=>{ BRUSH.opacity = +e.target.value/100; $('brushOpO').textContent = Math.round(BRUSH.opacity*100)+'%'; }; }
+if ($('brushHard')){ $('brushHard').value = Math.round(BRUSH.hardness*100); $('brushHardO').textContent = Math.round(BRUSH.hardness*100)+'%';
+  $('brushHard').oninput = e=>{ BRUSH.hardness = +e.target.value/100; $('brushHardO').textContent = Math.round(BRUSH.hardness*100)+'%'; }; }
+if ($('brushEraser')) $('brushEraser').onclick = ()=>{ BRUSH.eraser = !BRUSH.eraser; $('brushEraser').setAttribute('aria-pressed', BRUSH.eraser); };
+if ($('brushClear')) $('brushClear').onclick = ()=>{
+  const L = cur() && cur().kind==='brush' ? cur() : [...S.layers].reverse().find(l=>l.kind==='brush' && !!l.inside===PV.inside);
+  if (!L){ toast('No brush layer to clear'); return; }
+  L.src.getContext('2d').clearRect(0,0,TEX,TEX); L.thumb=null; composeSheet(); renderLayers(); commit();
+};
+if ($('movePiece')) $('movePiece').onchange = e=>{ const L=cur(); if(L) moveLayerToPiece(L, e.target.value); };
+if ($('moveFront')) $('moveFront').onclick = ()=>{ const L=cur(); if(L) moveLayerToPiece(L, 'front'); };
+if ($('moveBack')) $('moveBack').onclick = ()=>{ const L=cur(); if(L) moveLayerToPiece(L, 'back'); };
+addEventListener('keydown', e=>{
+  if (e.target.matches('input,textarea,select')) return;
+  if (e.key==='b' || e.key==='B'){ setBrushMode(!BRUSH.on); }
+  if (e.key==='e' || e.key==='E'){ if (BRUSH.on){ BRUSH.eraser=!BRUSH.eraser; if($('brushEraser')) $('brushEraser').setAttribute('aria-pressed', BRUSH.eraser); } }
+  if (e.key==='[' && BRUSH.on){ BRUSH.sizeCm = Math.max(0.2, +(BRUSH.sizeCm-0.2).toFixed(1)); if($('brushSize')){ $('brushSize').value=BRUSH.sizeCm; $('brushSizeO').textContent=BRUSH.sizeCm.toFixed(1)+' cm'; } }
+  if (e.key===']' && BRUSH.on){ BRUSH.sizeCm = Math.min(8, +(BRUSH.sizeCm+0.2).toFixed(1)); if($('brushSize')){ $('brushSize').value=BRUSH.sizeCm; $('brushSizeO').textContent=BRUSH.sizeCm.toFixed(1)+' cm'; } }
+  if (e.key==='Escape' && BRUSH.on) setBrushMode(false);
+});
 function placeImageFile(file, at=null){ if(!file || !file.type.startsWith('image/')) return; const img = new Image();
   img.onload = ()=>{ const f = pieceById.front.box;
     const x = at?.x ?? pendingPlace?.sx ?? (f[0]+f[2])/2;
@@ -741,6 +924,11 @@ async function serializeDesign(){
   for (const L of S.layers){
     const base = {id:L.id, kind:L.kind, x:L.x, y:L.y, w:L.w, rot:L.rot, opacity:L.opacity??1, flipX:!!L.flipX, flipY:!!L.flipY, locked:!!L.locked, visible:!!L.visible, inside:!!L.inside};
     if (L.kind==='text'){ layers.push({...base, text:L.text, font:L.font, color:L.color}); }
+    else if (L.kind==='brush'){
+      let dataUrl = null;
+      try { if (L.src && L.src.toDataURL) dataUrl = L.src.toDataURL('image/png'); } catch(_){}
+      layers.push({...base, name:L.name||'Brush paint', dataUrl});
+    }
     else {
       let dataUrl = null;
       try {
@@ -761,6 +949,13 @@ async function applyDesign(data){
     if (raw.kind==='text'){
       const L = {id:raw.id||++uid, kind:'text', text:raw.text||' ', font:raw.font||'Anton', color:raw.color||'#1b1b1b', x:raw.x, y:raw.y, w:raw.w, rot:raw.rot||0, opacity:raw.opacity??1, flipX:!!raw.flipX, flipY:!!raw.flipY, locked:!!raw.locked, visible:raw.visible!==false, inside:!!raw.inside};
       await ensureFont(L.font); textBitmap(L); next.push(L);
+    } else if (raw.kind==='brush'){
+      const c = makeBrushCanvas();
+      if (raw.dataUrl){
+        const img = await new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=raw.dataUrl; });
+        c.getContext('2d').drawImage(img,0,0);
+      }
+      next.push({id:raw.id||++uid, kind:'brush', name:raw.name||'Brush paint', src:c, aspect:1, x:raw.x??TEX/2, y:raw.y??TEX/2, w:raw.w??TEX, rot:0, opacity:raw.opacity??1, flipX:false, flipY:false, locked:!!raw.locked, visible:raw.visible!==false, inside:!!raw.inside});
     } else if (raw.dataUrl){
       const img = await new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=raw.dataUrl; });
       next.push({id:raw.id||++uid, kind:'image', name:raw.name||'Image', src:img, aspect:img.height/img.width, x:raw.x, y:raw.y, w:raw.w, rot:raw.rot||0, opacity:raw.opacity??1, flipX:!!raw.flipX, flipY:!!raw.flipY, locked:!!raw.locked, visible:raw.visible!==false, inside:!!raw.inside});
@@ -1117,4 +1312,19 @@ FONT_LIST.slice(8).forEach(f=>ensureFont(f));
   S.sel = S.layers[0].id;
 }
 setFabric(S.fabric); setBg(S.bg); applyMaterial(); renderLayers(); resizeGL(); resizePattern(); commit(); loop();
+try {
+  window.__FB = {
+    getS: () => S, getLayers: () => S.layers, pieceById, pieces: () => pieces, SHOWN: () => SHOWN,
+    TEX, PX, BRUSH, PV, pieceAt, fromDisplay, toView, toSheet, hitLayer, composeSheet, select, addText, ensureBrushLayer,
+    setBrushMode, moveLayerToPiece, stampBrush, commit, renderLayers, rebuildText, fitPattern,
+    camBack: () => { const b = document.querySelector('[data-cam="back"]'); if (b) b.click(); },
+    pieceClient(pieceId){
+      const p = pieceById[pieceId]; if (!p) return null;
+      const cx = (p.box[0]+p.box[2])/2 + p.dx, cy = (p.box[1]+p.box[3])/2 + p.dy;
+      const [vx,vy] = toView(cx, cy);
+      const r = $('patternCanvas').getBoundingClientRect();
+      return { x: r.left + vx, y: r.top + vy, vx, vy };
+    },
+  };
+} catch(_){}
 setTimeout(()=>{ $('hint').hidden = true; }, 9000);

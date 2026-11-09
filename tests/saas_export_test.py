@@ -26,7 +26,7 @@ def main():
 
         page.goto(BASE + '/?t=' + str(int(time.time()*1000)), wait_until='networkidle', timeout=120000)
         html = page.content()
-        assert_('FB-SAAS-V1' in html, 'missing FB-SAAS-V1 marker')
+        assert_('FB-BRUSH-V1' in html, 'missing FB-BRUSH-V1 marker')
 
         if page.locator('#landing').is_visible():
             page.click('#landingOpen')

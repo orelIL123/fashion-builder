@@ -7,6 +7,10 @@ A garment editor in the browser: a sewing-pattern sheet and a live 3D shirt side
 Marker: `FB-SAAS-V1` (in page source).
 
 ## Features
+
+- **Brush paint** on 2D pattern pieces and on the 3D shirt (UV-mapped). Color, size, opacity, hardness, eraser, clear.
+- **Front ↔ Back dragging**: artwork layers can be dragged across packed pattern pieces (and across the 3D garment). Use **→ Front / → Back** as a shortcut.
+
 - **Views:** Sewing pattern · Split · 3D, outside / inside pattern sides, front / back / side cameras, auto-rotate
 - **Design:** image and text layers on the **2D pattern map** (and 3D), click-to-place, opacity, flip, rotate handle, lock/duplicate/reorder, 35 fonts (incl. Hebrew), inside prints (neck label), solid or gradient fabric colour, rib colour, washes, save/load in browser
 - **Export:** 3D PNG (catalogue / dark / transparent), 2D pattern PNG + SVG, print files (ZIP), sublimation panels, spec sheet, **360° turntable video (~5s WebM/MP4)** (Pro)
@@ -61,3 +65,7 @@ Rebuild after edits: `python3 src/build.py` (bundles `auth.js` + `app.js` into `
 python3 -m http.server 8765   # then open http://localhost:8765
 ```
 (macOS: double-click `start.command`.)
+
+
+### Build marker
+`FB-BRUSH-V1` — brush tool + back-panel drag fix.
