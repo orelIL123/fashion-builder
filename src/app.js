@@ -11,7 +11,60 @@ import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
 const PATTERN = __PATTERN__;
 const SHEET_CM = PATTERN.sheetCm, PX = 16, TEX = SHEET_CM*PX; // 2048 px print sheet, 16 px per cm
 const $ = id => document.getElementById(id);
+
 const toast = msg => { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(()=>t.remove(), 3200); };
+
+// ---------- SaaS plan helpers (AuthService from auth.js) ----------
+function plan(){ return AuthService.getPlan(); }
+function requirePro(feature){
+  if (plan().id === 'pro') return true;
+  toast((feature||'This feature') + ' is Pro · ₪40/mo');
+  openPricing();
+  return false;
+}
+function ensureLayerRoom(){
+  if (AuthService.canAddLayer(S.layers.length)) return true;
+  toast(`Free plan: max ${plan().maxLayers} layers. Upgrade to Pro for unlimited.`);
+  openPricing();
+  return false;
+}
+function drawWatermark(ctx, w, h){
+  if (!AuthService.needsWatermark()) return;
+  ctx.save();
+  ctx.globalAlpha = 0.55;
+  ctx.fillStyle = '#f2c14e';
+  ctx.font = `700 ${Math.max(14, Math.round(w*0.028))}px "Familjen Grotesk", sans-serif`;
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('Fashion Builder · Free', w - 16, h - 14);
+  ctx.restore();
+}
+async function withWatermarkCanvas(srcCanvas){
+  if (!AuthService.needsWatermark()) return srcCanvas;
+  const c = document.createElement('canvas'); c.width = srcCanvas.width; c.height = srcCanvas.height;
+  const g = c.getContext('2d'); g.drawImage(srcCanvas, 0, 0); drawWatermark(g, c.width, c.height); return c;
+}
+function refreshPlanUI(){
+  const st = AuthService.getState();
+  const badge = $('planBadge');
+  if (badge){ badge.textContent = st.plan.name; badge.classList.toggle('pro', st.plan.id==='pro'); }
+  const logged = !!st.user;
+  if ($('accLogout')) $('accLogout').hidden = !logged;
+  if ($('accEmailHint')) $('accEmailHint').textContent = st.user ? st.user.email : '';
+  if ($('accSignIn')) $('accSignIn').querySelector('b').textContent = logged ? 'Account' : 'Sign in / Sign up';
+  // font options
+  const sel = $('textFont');
+  if (sel){
+    [...sel.options].forEach(o=>{
+      const proOnly = o.dataset.pro === '1';
+      const allowed = AuthService.canUseFont(o.value);
+      o.disabled = proOnly && !allowed;
+      o.hidden = false;
+    });
+  }
+  // turntable menu hint already has Pro pill
+}
+
 
 // ---------- pattern pieces in sheet-pixel space (y down = glTF UV space) ----------
 const USER = PATTERN.source==='user';
@@ -302,13 +355,13 @@ pc.addEventListener('pointerdown', e=>{
     if (!hit){ toast('Click on a pattern piece'); return; }
     const {sx,sy} = hit;
     if (placeMode==='text'){
-      const L = addText('YOUR TEXT', sx, sy, 18); select(L.id); rebuildText(L).then(()=>{ composeSheet(); renderLayers(); commit(); });
+      if(!ensureLayerRoom()) return; const L = addText('YOUR TEXT', sx, sy, 18); select(L.id); rebuildText(L).then(()=>{ composeSheet(); renderLayers(); commit(); });
       setPlaceMode(null); composeSheet(); commit(); return;
     }
     if (placeMode==='image'){
       if (pendingImage){
         const img = pendingImage.img, name = pendingImage.name; pendingImage = null; setPlaceMode(null);
-        const L = addImage(img, name, sx, sy, 24); select(L.id); composeSheet(); commit(); return;
+        if(!ensureLayerRoom()) return; const L = addImage(img, name, sx, sy, 24); select(L.id); composeSheet(); commit(); return;
       }
       pendingPlace = {sx, sy}; setPlaceMode(null); $('file').click(); return;
     }
@@ -370,7 +423,7 @@ for (const [id,v] of [['pOut',false],['pIn',true]]) $(id).onclick = ()=>{ PV.ins
 
 // ---------- three.js stage ----------
 const glc = $('gl'), pane = $('glPane');
-const renderer = new THREE.WebGLRenderer({canvas:glc, antialias:true, preserveDrawingBuffer:true});
+const renderer = new THREE.WebGLRenderer({canvas:glc, antialias:true, alpha:true, preserveDrawingBuffer:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 renderer.toneMapping = THREE.NeutralToneMapping; renderer.toneMappingExposure = 0.95;
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.VSMShadowMap;
@@ -539,7 +592,7 @@ glc.addEventListener('pointermove', e=>{ if(!gdrag){ const uv=hitUV(e); glc.styl
 glc.addEventListener('pointerup', ()=>{ if(gdrag){ gdrag=null; controls.enabled = true; renderLayers(); commit(); } });
 glc.addEventListener('dblclick', e=>{ const uv = hitUV(e); const L = cur(); if(uv && L && !L.inside){ L.x=uv[0]; L.y=uv[1]; composeSheet(); renderLayers(); commit(); } });
 
-let useAO = true, turntable = null;
+let useAO = true, turntable = null, recMirror = null;
 function render(){ if (useAO) composer.render(); else renderer.render(scene, camera); }
 function loop(){ requestAnimationFrame(loop);
   if (camAnim){ camAnim.t = Math.min(1, camAnim.t+0.045); const k = 1-Math.pow(1-camAnim.t,3);
@@ -551,6 +604,7 @@ function loop(){ requestAnimationFrame(loop);
   else controls.update();
   rig.rotation.y = Math.atan2(camera.position.x, camera.position.z);
   render();
+  if (recMirror && recMirror.paint){ try { recMirror.paint(); } catch(_){} }
 }
 
 // ---------- UI ----------
@@ -587,7 +641,7 @@ function syncLayerUI(){
 }
 $('textVal').oninput = e=>{ const L=cur(); if(!L||L.locked) return; L.text = e.target.value.replace(/\s*\/\s*/g,'\n') || ' '; textBitmap(L); composeSheet(); renderLayers(); };
 $('textVal').onchange = commit;
-$('textFont').onchange = async e=>{ const L=cur(); if(!L||L.locked) return; L.font = e.target.value; $('textFont').style.fontFamily = `"${L.font}", sans-serif`; await ensureFont(L.font); textBitmap(L); composeSheet(); renderLayers(); commit(); };
+$('textFont').onchange = async e=>{ const L=cur(); if(!L||L.locked) return; const font=e.target.value; if(!AuthService.canUseFont(font)){ toast('That font is Pro'); e.target.value=L.font; openPricing(); return; } L.font = font; $('textFont').style.fontFamily = `"${L.font}", sans-serif`; await ensureFont(L.font); textBitmap(L); composeSheet(); renderLayers(); commit(); };
 $('textColor').oninput = e=>{ const L=cur(); if(!L||L.locked) return; L.color = e.target.value; textBitmap(L); composeSheet(); }; $('textColor').onchange = ()=>{ renderLayers(); commit(); };
 $('lw').oninput = e=>{ const L=cur(); if(!L||L.locked) return; L.w = +e.target.value*PX; composeSheet(); syncLayerUI(); }; $('lw').onchange = commit;
 $('lr').oninput = e=>{ const L=cur(); if(!L||L.locked) return; L.rot = +e.target.value; composeSheet(); syncLayerUI(); }; $('lr').onchange = commit;
@@ -595,19 +649,19 @@ $('lop').oninput = e=>{ const L=cur(); if(!L||L.locked) return; L.opacity = +e.t
 $('lInside').onchange = e=>{ const L=cur(); if(!L||L.locked) return; L.inside = e.target.checked; select(L.id); composeSheet(); renderLayers(); commit(); };
 $('flipH').onclick = ()=>{ const L=cur(); if(!L||L.locked) return; L.flipX = !L.flipX; composeSheet(); renderLayers(); commit(); };
 $('flipV').onclick = ()=>{ const L=cur(); if(!L||L.locked) return; L.flipY = !L.flipY; composeSheet(); renderLayers(); commit(); };
-$('dupLayer').onclick = ()=>{ const L=cur(); if(!L) return; const N = cloneLayer(L); select(N.id); if(N.kind==='text') rebuildText(N).then(()=>{composeSheet();renderLayers();commit();}); composeSheet(); renderLayers(); commit(); };
+$('dupLayer').onclick = ()=>{ const L=cur(); if(!L) return; if(!ensureLayerRoom()) return; const N = cloneLayer(L); select(N.id); if(N.kind==='text') rebuildText(N).then(()=>{composeSheet();renderLayers();commit();}); composeSheet(); renderLayers(); commit(); };
 $('lockLayer').onclick = ()=>{ const L=cur(); if(!L) return; L.locked = !L.locked; renderLayers(); drawPattern(); commit(); };
 $('layerUp').onclick = ()=>{ const L=cur(); if(!L) return; const i=S.layers.indexOf(L); if(i<S.layers.length-1){ S.layers.splice(i,1); S.layers.splice(i+1,0,L); composeSheet(); renderLayers(); commit(); } };
 $('layerDown').onclick = ()=>{ const L=cur(); if(!L) return; const i=S.layers.indexOf(L); if(i>0){ S.layers.splice(i,1); S.layers.splice(i-1,0,L); composeSheet(); renderLayers(); commit(); } };
-$('addText').onclick = ()=>{ const f = pieceById.front.box; const L = addText('YOUR TEXT', (f[0]+f[2])/2, f[1]+24*PX, 20); select(L.id);
+$('addText').onclick = ()=>{ if(!ensureLayerRoom()) return; const f = pieceById.front.box; const L = addText('YOUR TEXT', (f[0]+f[2])/2, f[1]+24*PX, 20); select(L.id);
   rebuildText(L).then(()=>{ composeSheet(); renderLayers(); commit(); }); composeSheet(); commit(); };
-$('addImage').onclick = ()=>{ pendingPlace = null; $('file').click(); };
+$('addImage').onclick = ()=>{ if(!ensureLayerRoom()) return; pendingPlace = null; $('file').click(); };
 function placeImageFile(file, at=null){ if(!file || !file.type.startsWith('image/')) return; const img = new Image();
   img.onload = ()=>{ const f = pieceById.front.box;
     const x = at?.x ?? pendingPlace?.sx ?? (f[0]+f[2])/2;
     const y = at?.y ?? pendingPlace?.sy ?? (f[1]+28*PX);
     pendingPlace = null;
-    const L = addImage(img, (file.name||'Pasted image').replace(/\.[^.]+$/,''), x, y, 24); select(L.id); composeSheet(); commit(); };
+    if(!ensureLayerRoom()) return; const L = addImage(img, (file.name||'Pasted image').replace(/\.[^.]+$/,''), x, y, 24); select(L.id); composeSheet(); commit(); };
   img.src = URL.createObjectURL(file); }
 let skipFileAuto = false;
 $('file').onchange = e=>{ const f=e.target.files[0]; if (skipFileAuto){ skipFileAuto=false; e.target.value=''; return; } placeImageFile(f); e.target.value=''; };
@@ -681,7 +735,7 @@ function syncAllUI(){ $('fabricSw')._draw(); $('ribSw')._draw(); $('bgSw')._draw
   setFabric(S.fabric); setBg(S.bg); }
 
 // ---------- save / load (localStorage) + pattern PNG ----------
-const STORE_KEY = 'fashion-builder-design-v1';
+const STORE_KEY = AuthService.LEGACY_DESIGN_KEY;
 async function serializeDesign(){
   const layers = [];
   for (const L of S.layers){
@@ -714,23 +768,69 @@ async function applyDesign(data){
   }
   S.layers = next; syncAllUI(); composeSheet(); renderLayers(); commit(); toast('Design loaded');
 }
-$('saveDesign').onclick = async ()=>{ try { localStorage.setItem(STORE_KEY, JSON.stringify(await serializeDesign())); toast('Saved in this browser'); } catch(err){ toast('Could not save: '+err.message); } };
-$('loadDesign').onclick = async ()=>{ const raw = localStorage.getItem(STORE_KEY); if(!raw){ toast('No saved design yet'); return; } try { await applyDesign(JSON.parse(raw)); } catch(err){ toast('Could not load: '+err.message); } };
-$('exportPattern').onclick = async ()=>{
+$('saveDesign').onclick = async ()=>{
+  try {
+    const payload = await serializeDesign();
+    if (plan().maxDesigns > 1 && AuthService.getUser()){
+      AuthService.saveNamedDesign('Quick save', payload);
+      toast('Saved to My designs');
+    } else {
+      localStorage.setItem(STORE_KEY, JSON.stringify(payload));
+      toast('Saved in this browser');
+    }
+  } catch(err){ toast('Could not save: '+err.message); }
+};
+$('loadDesign').onclick = async ()=>{
+  const raw = localStorage.getItem(STORE_KEY);
+  if(!raw){ toast('No saved design yet'); return; }
+  try { await applyDesign(JSON.parse(raw)); } catch(err){ toast('Could not load: '+err.message); }
+};
+
+async function buildPatternPngCanvas(){
   const B = SHOWN.map(dispBox); const minX=Math.min(...B.map(b=>b[0])), minY=Math.min(...B.map(b=>b[1])), maxX=Math.max(...B.map(b=>b[2])), maxY=Math.max(...B.map(b=>b[3]));
   const pad=40; const c=document.createElement('canvas'); c.width=Math.ceil(maxX-minX+pad*2); c.height=Math.ceil(maxY-minY+pad*2+36);
   const g=c.getContext('2d'); g.fillStyle='#10120f'; g.fillRect(0,0,c.width,c.height); g.translate(pad-minX, pad-minY);
   for (const p of SHOWN){ g.save(); g.translate(p.dx,p.dy); g.save(); g.clip(p.path); g.drawImage(tex,0,0); g.restore();
     g.strokeStyle='rgba(255,255,255,.25)'; g.lineWidth=1; g.stroke(p.path); g.restore(); }
+  return withWatermarkCanvas(c);
+}
+async function exportPatternPng(){
+  const c = await buildPatternPngCanvas();
   const blob = await canvasBlob(c); showModal({img:URL.createObjectURL(blob), blob, name:'pattern-sheet.png', txt:'2D sewing-pattern sheet with your prints.'});
-};
+}
+$('exportPattern').onclick = ()=> exportPatternPng();
+
+function pathToSvgD(p){
+  const pts = p.pts; if (!pts.length) return '';
+  return pts.map((pt,i)=> (i?'L':'M')+pt[0].toFixed(2)+','+pt[1].toFixed(2)).join(' ') + ' Z';
+}
+async function exportPatternSvg(){
+  const B = SHOWN.map(dispBox); const minX=Math.min(...B.map(b=>b[0])), minY=Math.min(...B.map(b=>b[1])), maxX=Math.max(...B.map(b=>b[2])), maxY=Math.max(...B.map(b=>b[3]));
+  const pad=40; const W=Math.ceil(maxX-minX+pad*2), H=Math.ceil(maxY-minY+pad*2+36);
+  const sheetUrl = tex.toDataURL('image/png');
+  let body = '';
+  for (const p of SHOWN){
+    const d = pathToSvgD(p);
+    const tx = (p.dx + pad - minX).toFixed(2), ty = (p.dy + pad - minY).toFixed(2);
+    body += `<g transform="translate(${tx},${ty})"><clipPath id="c-${p.id}"><path d="${d}"/></clipPath><image href="${sheetUrl}" width="${TEX}" height="${TEX}" clip-path="url(#c-${p.id})"/><path d="${d}" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="1"/></g>`;
+  }
+  if (AuthService.needsWatermark()){
+    body += `<text x="${W-16}" y="${H-14}" text-anchor="end" font-family="Familjen Grotesk,sans-serif" font-size="18" font-weight="700" fill="#f2c14e" opacity="0.7">Fashion Builder · Free</text>`;
+  }
+  const svg = `<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="100%" height="100%" fill="#10120f"/>${body}</svg>`;
+  const blob = new Blob([svg], {type:'image/svg+xml'});
+  showModal({img:URL.createObjectURL(blob), blob, name:'pattern-sheet.svg', txt:'2D pattern as SVG (piece clips + print sheet).'});
+}
 
 // ---------- exports ----------
 const download = (blob, name) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); };
 const canvasBlob = c => new Promise(r=>c.toBlob(r,'image/png'));
 function showModal({img, video, name, blob, txt}){
   $('modalImg').hidden = !img; $('modalVid').hidden = !video; if (img) $('modalImg').src = img; if (video){ $('modalVid').src = video; $('modalVid').play().catch(()=>{}); }
-  $('modalTxt').textContent = txt; $('modal').hidden = false; $('modalDl').onclick = ()=> download(blob, name); }
+  $('modalTxt').textContent = txt; $('modal').hidden = false;
+  $('modalDl').textContent = video ? 'Download video' : 'Download';
+  $('modalDl').onclick = ()=> download(blob, name);
+}
 $('modalClose').onclick = ()=>{ $('modal').hidden = true; $('modalVid').pause(); };
 function pieceCanvas(p, bleedCm=0, inside=false){
   const b = bleedCm*PX, [x0,y0,x1,y1] = p.box; const c = document.createElement('canvas'); c.width = Math.ceil(x1-x0+2*b); c.height = Math.ceil(y1-y0+2*b);
@@ -754,13 +854,142 @@ function specSheet(){
     g.fillStyle='#16130c'; g.fillText(`${layerName(L).slice(0,28)}`, X, y); y+=24; g.fillStyle='#555';
     g.fillText(`  ${p?p.label:'—'}${L.inside?' (inside)':''} · ${(L.w/PX).toFixed(1)} × ${(L.w*L.aspect/PX).toFixed(1)} cm`, X, y); y+=22;
     g.fillText(`  centre ${fromL.toFixed(1)} cm from left, ${fromT.toFixed(1)} cm from top · ${Math.round(L.rot)}°`, X, y); y+=34; if (y>H-40) break; }
+  drawWatermark(g, W, H);
   return c; }
 async function zipOf(files){ if (!window.JSZip) { toast('ZIP library did not load. Check your connection and try again.'); return null; }
   const z = new JSZip(); for (const [n,b] of files) z.file(n, b); return z.generateAsync({type:'blob'}); }
+
+async function capture3dPng({mode='catalogue'}={}){
+  const pr = renderer.getPixelRatio();
+  const prevClear = renderer.getClearColor(new THREE.Color()).getHex();
+  const prevAlpha = renderer.getClearAlpha();
+  const prevBg = scene.background;
+  const bdVisible = backdrop.visible;
+  const prevAutoClear = renderer.autoClear;
+  try {
+    if (mode === 'catalogue'){
+      renderer.setPixelRatio(Math.min(devicePixelRatio,2)*2); resizeGL(); render();
+      const c = await withWatermarkCanvas(glc);
+      const blob = await canvasBlob(c);
+      return {blob, w: glc.width, h: glc.height, name:'catalogue-render.png', txt:`Catalogue render at ${glc.width/2}×${glc.height/2}px ×2.`};
+    }
+    if (mode === 'dark'){
+      renderer.setPixelRatio(Math.min(devicePixelRatio,2)*2); resizeGL();
+      backdrop.visible = false; scene.background = new THREE.Color('#141613');
+      renderer.setClearColor('#141613', 1); render();
+      const c = await withWatermarkCanvas(glc);
+      const blob = await canvasBlob(c);
+      return {blob, name:'3d-dark.png', txt:'3D snapshot with a dark studio background.'};
+    }
+    if (mode === 'clear'){
+      renderer.setPixelRatio(Math.min(devicePixelRatio,2)*2); resizeGL();
+      const prevAO = useAO; useAO = false; // composer may not preserve alpha well
+      backdrop.visible = false; scene.background = null;
+      renderer.setClearColor(0x000000, 0); renderer.autoClear = true; render();
+      // copy to offscreen preserving alpha
+      const off = document.createElement('canvas'); off.width = glc.width; off.height = glc.height;
+      const og = off.getContext('2d'); og.clearRect(0,0,off.width,off.height); og.drawImage(glc,0,0);
+      const marked = await withWatermarkCanvas(off);
+      const blob = await canvasBlob(marked);
+      useAO = prevAO;
+      return {blob, name:'3d-transparent.png', txt:'3D snapshot with transparent background (best-effort).'};
+    }
+  } finally {
+    renderer.setPixelRatio(pr); resizeGL();
+    backdrop.visible = bdVisible; scene.background = prevBg;
+    renderer.setClearColor(prevClear, prevAlpha); renderer.autoClear = prevAutoClear;
+  }
+}
+
+function showRecProgress(on, pct=0, label){
+  const el = $('recProgress'); if (!el) return;
+  el.hidden = !on;
+  if (label) $('recProgressLabel').textContent = label;
+  $('recProgressBar').style.width = Math.round(pct*100)+'%';
+  $('recProgressPct').textContent = Math.round(pct*100)+'%';
+}
+
+async function recordTurntable(){
+  if (!requirePro('Turntable video')) return;
+  if (!window.MediaRecorder){ toast('Video recording is not supported in this browser.'); return; }
+  const savedPos = camera.position.clone();
+  const savedTarget = controls.target.clone();
+  const wasAuto = $('autoRot')?.getAttribute('aria-pressed') === 'true';
+  if (wasAuto) $('autoRot').click();
+  const prevEnabled = controls.enabled; controls.enabled = false;
+
+  const fps = 24, seconds = 5, total = fps * seconds; // ~5s turntable
+  fitDist();
+  const mirror = document.createElement('canvas');
+  mirror.width = glc.width || 640; mirror.height = glc.height || 720;
+  mirror.style.cssText = 'position:fixed;left:-9999px;top:0;pointer-events:none;';
+  document.body.appendChild(mirror);
+  let mctxLive = mirror.getContext('2d', { alpha: false });
+  const stream = mirror.captureStream(0);
+  const vtrack = stream.getVideoTracks()[0];
+  const mime = ['video/webm;codecs=vp8','video/webm;codecs=vp9','video/webm','video/mp4;codecs=avc1'].find(m=>MediaRecorder.isTypeSupported(m)) || '';
+  let rec;
+  try { rec = new MediaRecorder(stream, mime ? {mimeType:mime, videoBitsPerSecond:4e6} : {videoBitsPerSecond:4e6}); }
+  catch(_){ rec = new MediaRecorder(stream); }
+  const chunks=[]; rec.ondataavailable = e=>{ if (e.data && e.data.size) chunks.push(e.data); };
+  const stopped = new Promise(r=>rec.onstop=r);
+
+  const paint = ()=>{
+    try {
+      if (glc.width && glc.height && (mirror.width !== glc.width || mirror.height !== glc.height)){
+        mirror.width = glc.width; mirror.height = glc.height;
+        mctxLive = mirror.getContext('2d', { alpha: false });
+      }
+      mctxLive.drawImage(glc, 0, 0);
+      if (vtrack.requestFrame) vtrack.requestFrame();
+    } catch(_){}
+  };
+
+  showRecProgress(true, 0, 'Recording 360° turntable…');
+  toast('Recording a 5-second turntable…');
+  rec.start(100);
+  const budget = 1000 / fps;
+
+  for (let i = 0; i < total; i++){
+    const t0 = performance.now();
+    const t = i / (total - 1);
+    const a = t * Math.PI * 2;
+    camera.position.set(Math.sin(a)*FIT.dist, FIT.cy+0.04*FIT.dist, Math.cos(a)*FIT.dist);
+    camera.lookAt(0, FIT.cy, 0);
+    rig.rotation.y = Math.atan2(camera.position.x, camera.position.z);
+    render();
+    paint();
+    if ((i & 1) === 0) showRecProgress(true, t, 'Recording 360° turntable…');
+    const wait = budget - (performance.now() - t0);
+    if (wait > 4) await new Promise(r=>setTimeout(r, wait));
+    else await new Promise(r=>setTimeout(r, 0)); // yield so UI can update
+  }
+
+  showRecProgress(true, 1, 'Finalizing…');
+  try { rec.requestData(); } catch(_){}
+  await new Promise(r=>setTimeout(r, 200));
+  rec.stop(); await stopped;
+  stream.getTracks().forEach(t=>t.stop());
+  mirror.remove();
+
+  camera.position.copy(savedPos); controls.target.copy(savedTarget); controls.update();
+  controls.enabled = prevEnabled;
+  showRecProgress(false);
+
+  const blobType = (mime && mime.startsWith('video/')) ? mime.split(';')[0] : 'video/webm';
+  const blob = new Blob(chunks, {type: blobType});
+  if (!blob.size){ toast('Recording produced an empty file — try Chrome/Edge'); return; }
+  const ext = /mp4/.test(mime||'') ? 'mp4' : 'webm';
+  download(blob, `turntable.${ext}`);
+  showModal({video:URL.createObjectURL(blob), blob, name:`turntable.${ext}`, txt:`5-second 360° turntable · ${total} frames · ${(blob.size/1024).toFixed(0)} KB. Camera restored.`});
+}
+
 const EXPORTS = {
-  async catalogue(){ const pr = renderer.getPixelRatio(); renderer.setPixelRatio(Math.min(devicePixelRatio,2)*2); resizeGL(); render();
-    const blob = await canvasBlob(glc); const url = URL.createObjectURL(blob); renderer.setPixelRatio(pr); resizeGL();
-    showModal({img:url, blob, name:'catalogue-render.png', txt:`Catalogue render at ${glc.width/2}×${glc.height/2}px ×2.`}); },
+  async catalogue(){ const r = await capture3dPng({mode:'catalogue'}); showModal({img:URL.createObjectURL(r.blob), blob:r.blob, name:r.name, txt:r.txt}); },
+  async snapDark(){ const r = await capture3dPng({mode:'dark'}); showModal({img:URL.createObjectURL(r.blob), blob:r.blob, name:r.name, txt:r.txt}); },
+  async snapClear(){ const r = await capture3dPng({mode:'clear'}); showModal({img:URL.createObjectURL(r.blob), blob:r.blob, name:r.name, txt:r.txt}); },
+  async patternPng(){ await exportPatternPng(); },
+  async patternSvg(){ await exportPatternSvg(); },
   async print(){ const files = [];
     for (const p of pieces){ files.push([`pieces/${p.label}.png`, await canvasBlob(pieceCanvas(p))]); if (S.layers.some(l=>l.inside&&l.visible&&pieceAt(l.x,l.y)===p)) files.push([`pieces/${p.label} (inside).png`, await canvasBlob(pieceCanvas(p,0,true))]); }
     for (const L of S.layers.filter(l=>l.visible)){ const c=document.createElement('canvas'); c.width=L.src.width; c.height=L.src.height; c.getContext('2d').drawImage(L.src,0,0); files.push([`prints/${layerName(L).replace(/[^\w\- ]+/g,'').slice(0,40)||'print'}-${L.id}.png`, await canvasBlob(c)]); }
@@ -771,18 +1000,104 @@ const EXPORTS = {
     const blob = await zipOf(files); if (!blob) return; download(blob, 'sublimation-panels.zip');
     showModal({img:pieceCanvas(pieceById.front,1).toDataURL(), blob, name:'sublimation-panels.zip', txt:`${files.length} full panels with 1 cm bleed at ${PX} px/cm (≈ 41 dpi preview scale; scale up in your RIP).`}); },
   async spec(){ const c = specSheet(); const blob = await canvasBlob(c); showModal({img:c.toDataURL(), blob, name:'spec-sheet.png', txt:'Spec sheet with print sizes and positions.'}); },
-  async turntable(){ if (!glc.captureStream || !window.MediaRecorder){ toast('Video recording is not supported in this browser.'); return; }
-    const stream = glc.captureStream(30); const mime = ['video/mp4;codecs=avc1','video/webm;codecs=vp9','video/webm'].find(m=>MediaRecorder.isTypeSupported(m)) || '';
-    const rec = new MediaRecorder(stream, {mimeType:mime, videoBitsPerSecond:8e6}); const chunks=[]; rec.ondataavailable = e=>chunks.push(e.data);
-    const stopped = new Promise(r=>rec.onstop=r); toast('Recording a 6-second turntable…'); rec.start();
-    await new Promise(r=>{ turntable = {t0:performance.now(), ms:6000, done:r}; }); rec.stop(); await stopped; setCam('front', true);
-    const blob = new Blob(chunks, {type:mime||'video/webm'}); const ext = /mp4/.test(mime)?'mp4':'webm';
-    showModal({video:URL.createObjectURL(blob), blob, name:`turntable.${ext}`, txt:'6-second 360° turntable.'}); },
+  async turntable(){ await recordTurntable(); },
 };
 $('exportBtn').onclick = e=>{ e.stopPropagation(); const m=$('exportMenu'); m.hidden = !m.hidden; $('exportBtn').setAttribute('aria-expanded', !m.hidden); };
-document.addEventListener('click', e=>{ if(!e.target.closest('.menuwrap')){ $('exportMenu').hidden = true; $('exportBtn').setAttribute('aria-expanded', false); } });
+document.addEventListener('click', e=>{ if(!e.target.closest('.menuwrap')){ $('exportMenu').hidden = true; $('exportBtn').setAttribute('aria-expanded', false); if($('accountMenu')){ $('accountMenu').hidden = true; $('accountBtn')?.setAttribute('aria-expanded', false); } } });
 document.querySelectorAll('[data-exp]').forEach(b=>b.onclick = ()=>{ $('exportMenu').hidden = true; EXPORTS[b.dataset.exp]().catch(err=>{ console.error(err); toast('Export failed: '+err.message); }); });
-$('snap').onclick = async ()=>{ render(); const blob = await canvasBlob(glc); showModal({img:URL.createObjectURL(blob), blob, name:'3d-snapshot.png', txt:'Right-click the image and choose Save Image As if the download button is blocked.'}); };
+$('snap').onclick = async ()=>{ const r = await capture3dPng({mode:'catalogue'}); showModal({img:URL.createObjectURL(r.blob), blob:r.blob, name:'3d-snapshot.png', txt:r.txt}); };
+
+// ---------- SaaS UI: landing, auth, pricing, designs ----------
+let authMode = 'in';
+function openLanding(){ $('landing').hidden = false; }
+function closeLanding(){ $('landing').hidden = true; try{ sessionStorage.setItem('fb-entered','1'); }catch(_){} }
+function openAuth(mode){
+  authMode = mode || 'in';
+  $('authModal').hidden = false;
+  $('authError').textContent = '';
+  $('authTabIn').setAttribute('aria-pressed', authMode==='in');
+  $('authTabUp').setAttribute('aria-pressed', authMode==='up');
+  $('authTitle').textContent = authMode==='up' ? 'Create account' : 'Sign in';
+  $('authName').parentElement.hidden = authMode!=='up';
+  $('authCodeRow').hidden = authMode!=='up';
+  $('authPass').autocomplete = authMode==='up' ? 'new-password' : 'current-password';
+}
+function closeAuth(){ $('authModal').hidden = true; }
+function openPricing(){ $('pricingModal').hidden = false; $('paySoon').hidden = true; }
+function closePricing(){ $('pricingModal').hidden = true; }
+
+$('landingOpen').onclick = ()=> closeLanding();
+$('pickFree').onclick = ()=> closeLanding();
+$('landingAuth').onclick = ()=> openAuth('up');
+$('pickPro').onclick = ()=>{ closeLanding(); if (!AuthService.getUser()) openAuth('up'); else openPricing(); };
+
+$('upgradeBtn').onclick = ()=> openPricing();
+$('accountBtn').onclick = e=>{ e.stopPropagation(); const m=$('accountMenu'); m.hidden = !m.hidden; $('accountBtn').setAttribute('aria-expanded', !m.hidden); $('exportMenu').hidden = true; };
+$('accSignIn').onclick = ()=>{ $('accountMenu').hidden = true; openAuth(AuthService.getUser()?'in':'up'); };
+$('accPricing').onclick = ()=>{ $('accountMenu').hidden = true; openPricing(); };
+$('accLogout').onclick = ()=>{ AuthService.logout(); refreshPlanUI(); toast('Logged out'); $('accountMenu').hidden = true; };
+$('accDesigns').onclick = ()=>{ $('accountMenu').hidden = true; openDesigns(); };
+
+$('authTabIn').onclick = ()=> openAuth('in');
+$('authTabUp').onclick = ()=> openAuth('up');
+$('authCancel').onclick = ()=> closeAuth();
+$('authSubmit').onclick = async ()=>{
+  $('authError').textContent = '';
+  try {
+    if (authMode==='up') await AuthService.signup({email:$('authEmail').value, password:$('authPass').value, name:$('authName').value, inviteCode:$('authCode').value});
+    else await AuthService.login({email:$('authEmail').value, password:$('authPass').value});
+    refreshPlanUI(); closeAuth(); closeLanding();
+    toast(AuthService.getPlan().id==='pro' ? 'Welcome — Pro unlocked' : 'Signed in · Free plan');
+  } catch(err){ $('authError').textContent = err.message; }
+};
+$('pricingClose').onclick = ()=> closePricing();
+$('subscribeBtn').onclick = ()=>{ $('paySoon').hidden = false; toast('Payments coming soon'); };
+$('redeemBtn').onclick = ()=>{
+  try {
+    if (!AuthService.getUser()){ closePricing(); openAuth('up'); toast('Sign up first, then redeem the code'); return; }
+    AuthService.redeemCode($('redeemCode').value);
+    refreshPlanUI(); closePricing(); toast('Pro activated with access code');
+  } catch(err){ toast(err.message); }
+};
+
+function openDesigns(){
+  if (!requirePro('Multiple saved designs') && plan().maxDesigns<=1){
+    // requirePro already opened pricing; still allow viewing single save message
+  }
+  if (plan().id !== 'pro'){ openPricing(); return; }
+  $('designsModal').hidden = false;
+  renderDesignsList();
+}
+function renderDesignsList(){
+  const box = $('designsList'); box.innerHTML = '';
+  const list = AuthService.listDesigns();
+  if (!list.length){ box.innerHTML = '<p class="sub">No named designs yet.</p>'; return; }
+  list.forEach(d=>{
+    const row = document.createElement('div'); row.className='row'; row.style.cssText='justify-content:space-between;align-items:center;border:1px solid var(--line);border-radius:8px;padding:8px 10px';
+    const meta = document.createElement('div'); meta.innerHTML = `<b>${d.name}</b><div class="sub" style="margin:0">${new Date(d.updatedAt).toLocaleString()}</div>`;
+    const actions = document.createElement('div'); actions.className='row';
+    const load = document.createElement('button'); load.className='btn'; load.textContent='Load';
+    load.onclick = async ()=>{ try{ await applyDesign(d.data); $('designsModal').hidden=true; toast('Loaded “'+d.name+'”'); }catch(e){ toast(e.message);} };
+    const del = document.createElement('button'); del.className='btn'; del.textContent='Delete';
+    del.onclick = ()=>{ AuthService.deleteNamedDesign(d.id); renderDesignsList(); };
+    actions.append(load, del); row.append(meta, actions); box.appendChild(row);
+  });
+}
+$('designsClose').onclick = ()=> $('designsModal').hidden = true;
+$('designSaveAs').onclick = async ()=>{
+  try {
+    if (plan().id !== 'pro'){ openPricing(); return; }
+    const name = $('designName').value.trim() || 'Untitled';
+    AuthService.saveNamedDesign(name, await serializeDesign());
+    $('designName').value=''; renderDesignsList(); toast('Saved “'+name+'”');
+  } catch(err){ toast(err.message); }
+};
+
+AuthService.onChange(()=> refreshPlanUI());
+refreshPlanUI();
+try { if (!sessionStorage.getItem('fb-entered')) openLanding(); } catch(_){ openLanding(); }
+
+
 
 // ---------- boot with a sample design ----------
 $('pcCount').textContent = `${mainPieces().length} pieces`; $('garmentName').textContent = USER ? `Raglan tee · ${mainPieces().length} pieces` : 'Oversized tee · 5 pieces';
@@ -795,10 +1110,10 @@ FONT_LIST.slice(8).forEach(f=>ensureFont(f));
 {
   const f = pieceById.front.box, b = pieceById.back.box, sl = pieceById.sleeveL.box;
   const fx = (f[0]+f[2])/2, bx = (b[0]+b[2])/2;
-  await ensureFont('Permanent Marker'); await ensureFont('Archivo Black');
+  await ensureFont('Permanent Marker'); await ensureFont('Bebas Neue'); await ensureFont('Anton');
   addText('BUILT.\nNOT\nGENERATED.', fx, f[1]+27*PX, 25, {font:'Permanent Marker', color:'#efece3', rot:-4});
-  addText('FB', (sl[0]+sl[2])/2+4*PX, sl[1]+14*PX, 4.5, {font:'Archivo Black', color:'#efece3', rot:0});
-  addText('FASHION BUILDER\nL  ·  100% COTTON', bx, b[1]+6.5*PX, 9, {font:'Archivo Black', color:'#1b1b1b', inside:true});
+  addText('FB', (sl[0]+sl[2])/2+4*PX, sl[1]+14*PX, 4.5, {font:'Bebas Neue', color:'#efece3', rot:0});
+  addText('FASHION BUILDER\nL  ·  100% COTTON', bx, b[1]+6.5*PX, 9, {font:'Anton', color:'#1b1b1b', inside:true});
   S.sel = S.layers[0].id;
 }
 setFabric(S.fabric); setBg(S.bg); applyMaterial(); renderLayers(); resizeGL(); resizePattern(); commit(); loop();

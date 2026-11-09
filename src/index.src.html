@@ -2,7 +2,7 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Alfa+Slab+One&family=Anton&family=Archivo+Black&family=Assistant:wght@400;700&family=Bangers&family=Barlow+Condensed:wght@700&family=Bebas+Neue&family=Black+Ops+One&family=Caveat:wght@600&family=Courier+Prime&family=DM+Serif+Display&family=Familjen+Grotesk:wght@400;500;600;700&family=Frank+Ruhl+Libre:wght@400;700&family=Heebo:wght@400;700&family=Indie+Flower&family=JetBrains+Mono:wght@400;500&family=Karantina:wght@400;700&family=Lobster&family=Lora:wght@600&family=Merriweather:wght@700&family=Montserrat:wght@600;800&family=Oswald:wght@500;700&family=Pacifico&family=Permanent+Marker&family=Playfair+Display:wght@700&family=Poppins:wght@600;800&family=Press+Start+2P&family=Righteous&family=Roboto:wght@400;700&family=Rubik:wght@400;700&family=Secular+One&family=Space+Mono&family=Suez+One&family=Teko:wght@600&family=Varela+Round&display=swap">
-<!-- FB-UPGRADE-2D-LAYERS -->
+<!-- FB-SAAS-V1 -->
 <style>
 /* Layout: tailor's cutting table — tool rail top, two work surfaces (pattern sheet | 3D fitting), spec panel right. Single dark workshop look by choice. */
 :root{
@@ -126,6 +126,39 @@ label.field{grid-template-columns:96px 1fr 48px}
 #patternPane.placing{outline:2px solid var(--accent);outline-offset:-2px}
 .snap-guide{stroke:var(--accent);stroke-dasharray:4 3}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* SaaS / auth / pricing */
+.plan-badge{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;padding:4px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.plan-badge.pro{color:var(--accent-ink);background:var(--accent);border-color:var(--accent);font-weight:700}
+.user-menu{position:relative}
+.user-menu .menu{width:280px}
+.landing{position:fixed;inset:0;z-index:50;background:radial-gradient(120% 80% at 50% 0%,#1f241c 0%,var(--bg) 55%);overflow:auto;padding:32px 20px 48px}
+.landing-inner{max-width:980px;margin:0 auto;display:grid;gap:28px}
+.landing-hero{display:grid;gap:14px;text-align:center;padding:24px 0 8px}
+.landing-hero h1{margin:0;font-size:clamp(28px,5vw,44px);letter-spacing:-.02em}
+.landing-hero p{margin:0 auto;max-width:540px;color:var(--muted);font-size:16px;line-height:1.5}
+.pricing{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.price-card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px;display:grid;gap:12px;text-align:left}
+.price-card.featured{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.price-card h3{margin:0;font-size:18px}
+.price-card .price{font-size:32px;font-weight:700;letter-spacing:-.02em}
+.price-card .price small{font-size:14px;font-weight:500;color:var(--muted)}
+.price-card ul{margin:0;padding:0 0 0 18px;color:var(--muted);display:grid;gap:6px;font-size:13.5px}
+.auth-card{width:min(420px,100%)}
+.auth-card h2{margin:0;font-size:20px;letter-spacing:0;text-transform:none;color:var(--text)}
+.auth-card label{display:grid;gap:6px;font-size:12.5px;color:var(--muted)}
+.auth-card input{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;width:100%}
+.auth-tabs{display:flex;gap:6px;margin-bottom:4px}
+.auth-error{color:var(--danger);font-size:13px;min-height:1.2em}
+.progress-overlay{position:fixed;inset:0;z-index:45;background:rgba(0,0,0,.55);display:grid;place-items:center}
+.progress-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px 24px;width:min(360px,90vw);display:grid;gap:12px}
+.progress-bar{height:8px;background:var(--bg);border-radius:999px;overflow:hidden}
+.progress-bar>i{display:block;height:100%;width:0;background:var(--accent);border-radius:999px;transition:width .15s linear}
+.font-pro-tag{color:var(--accent);font-size:10px;margin-inline-start:6px}
+.menu button .pro-pill{display:inline-block;margin-inline-start:6px;font-family:var(--f-mono);font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--accent-ink);background:var(--accent);padding:1px 6px;border-radius:999px;font-weight:700}
+.modal.wide .card{max-width:min(720px,100%)}
+.designs-list{display:grid;gap:6px;max-height:240px;overflow:auto}
+.designs-list button{text-align:left}
 </style>
 
 <div class="app">
@@ -146,11 +179,26 @@ label.field{grid-template-columns:96px 1fr 48px}
   <div class="menuwrap">
     <button class="btn primary" id="exportBtn" aria-haspopup="true" aria-expanded="false">Export <svg width="12" height="12" viewBox="0 0 12 12"><path d="m3 4.5 3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button>
     <div class="menu" id="exportMenu" hidden role="menu">
-      <button role="menuitem" data-exp="catalogue"><b>Catalogue render</b><span>Photo-quality 2× picture for your website and catalogue</span></button>
-      <button role="menuitem" data-exp="print"><b>Print files (ZIP)</b><span>Each pattern piece as a PNG named as on the pattern, each print separately, and the spec sheet, for a print shop</span></button>
-      <button role="menuitem" data-exp="sublimation"><b>Sublimation panels (ZIP)</b><span>Each pattern piece as one full file with 1 cm bleed, for sublimation and all-over print</span></button>
-      <button role="menuitem" data-exp="spec"><b>Spec sheet (PNG)</b><span>Print sizes and positions, for sewing and production</span></button>
-      <button role="menuitem" data-exp="turntable"><b>Turntable video</b><span>A short 360° video of the garment, for Reels and stories</span></button>
+      <button role="menuitem" data-exp="catalogue"><b>3D PNG (catalogue)</b><span>Current camera · photo-quality 2× render</span></button>
+      <button role="menuitem" data-exp="snapDark"><b>3D PNG · dark studio</b><span>Snapshot with a dark backdrop</span></button>
+      <button role="menuitem" data-exp="snapClear"><b>3D PNG · transparent</b><span>Alpha background for mockups</span></button>
+      <button role="menuitem" data-exp="patternPng"><b>2D pattern PNG</b><span>Sewing-pattern sheet with your prints</span></button>
+      <button role="menuitem" data-exp="patternSvg"><b>2D pattern SVG</b><span>Vector sheet of piece outlines + prints</span></button>
+      <button role="menuitem" data-exp="print"><b>Print files (ZIP)</b><span>Pieces, prints and spec sheet for a print shop</span></button>
+      <button role="menuitem" data-exp="sublimation"><b>Sublimation panels (ZIP)</b><span>Full panels with 1 cm bleed</span></button>
+      <button role="menuitem" data-exp="spec"><b>Spec sheet (PNG)</b><span>Print sizes and positions</span></button>
+      <button role="menuitem" data-exp="turntable"><b>Turntable video <span class="pro-pill">Pro</span></b><span>Short 360° rotation (~5s, WebM/MP4)</span></button>
+    </div>
+  </div>
+  <button class="btn" id="upgradeBtn" title="Upgrade">Upgrade · ₪40</button>
+  <span class="plan-badge" id="planBadge">Free</span>
+  <div class="menuwrap user-menu">
+    <button class="btn" id="accountBtn" aria-haspopup="true" aria-expanded="false">Account</button>
+    <div class="menu" id="accountMenu" hidden role="menu">
+      <button role="menuitem" id="accSignIn"><b>Sign in / Sign up</b><span>Email + password (demo, local only)</span></button>
+      <button role="menuitem" id="accPricing"><b>Plans &amp; pricing</b><span>Free · Pro ₪40/mo</span></button>
+      <button role="menuitem" id="accDesigns"><b>My designs</b><span>Save multiple designs on Pro</span></button>
+      <button role="menuitem" id="accLogout" hidden><b>Log out</b><span id="accEmailHint"></span></button>
     </div>
   </div>
 </header>
@@ -207,39 +255,39 @@ label.field{grid-template-columns:96px 1fr 48px}
             <select id="textFont" aria-label="Font">
               <option value="Anton" style="font-family:\"Anton\",sans-serif">Anton</option>
               <option value="Bebas Neue" style="font-family:\"Bebas Neue\",sans-serif">Bebas Neue</option>
-              <option value="Archivo Black" style="font-family:\"Archivo Black\",sans-serif">Archivo Black</option>
-              <option value="Oswald" style="font-family:\"Oswald\",sans-serif">Oswald</option>
-              <option value="Barlow Condensed" style="font-family:\"Barlow Condensed\",sans-serif">Barlow Condensed</option>
-              <option value="Black Ops One" style="font-family:\"Black Ops One\",sans-serif">Black Ops One</option>
-              <option value="Alfa Slab One" style="font-family:\"Alfa Slab One\",sans-serif">Alfa Slab One</option>
-              <option value="Abril Fatface" style="font-family:\"Abril Fatface\",sans-serif">Abril Fatface</option>
-              <option value="Teko" style="font-family:\"Teko\",sans-serif">Teko</option>
-              <option value="Bangers" style="font-family:\"Bangers\",sans-serif">Bangers</option>
-              <option value="Righteous" style="font-family:\"Righteous\",sans-serif">Righteous</option>
+              <option value="Archivo Black" data-pro="1" style="font-family:\"Archivo Black\",sans-serif">Archivo Black · Pro</option>
+              <option value="Oswald" data-pro="1" style="font-family:\"Oswald\",sans-serif">Oswald · Pro</option>
+              <option value="Barlow Condensed" data-pro="1" style="font-family:\"Barlow Condensed\",sans-serif">Barlow Condensed · Pro</option>
+              <option value="Black Ops One" data-pro="1" style="font-family:\"Black Ops One\",sans-serif">Black Ops One · Pro</option>
+              <option value="Alfa Slab One" data-pro="1" style="font-family:\"Alfa Slab One\",sans-serif">Alfa Slab One · Pro</option>
+              <option value="Abril Fatface" data-pro="1" style="font-family:\"Abril Fatface\",sans-serif">Abril Fatface · Pro</option>
+              <option value="Teko" data-pro="1" style="font-family:\"Teko\",sans-serif">Teko · Pro</option>
+              <option value="Bangers" data-pro="1" style="font-family:\"Bangers\",sans-serif">Bangers · Pro</option>
+              <option value="Righteous" data-pro="1" style="font-family:\"Righteous\",sans-serif">Righteous · Pro</option>
               <option value="Permanent Marker" style="font-family:\"Permanent Marker\",sans-serif">Permanent Marker</option>
-              <option value="Pacifico" style="font-family:\"Pacifico\",sans-serif">Pacifico</option>
-              <option value="Lobster" style="font-family:\"Lobster\",sans-serif">Lobster</option>
-              <option value="Caveat" style="font-family:\"Caveat\",sans-serif">Caveat</option>
-              <option value="Indie Flower" style="font-family:\"Indie Flower\",sans-serif">Indie Flower</option>
-              <option value="DM Serif Display" style="font-family:\"DM Serif Display\",sans-serif">DM Serif Display</option>
-              <option value="Playfair Display" style="font-family:\"Playfair Display\",sans-serif">Playfair Display</option>
-              <option value="Merriweather" style="font-family:\"Merriweather\",sans-serif">Merriweather</option>
-              <option value="Lora" style="font-family:\"Lora\",sans-serif">Lora</option>
+              <option value="Pacifico" data-pro="1" style="font-family:\"Pacifico\",sans-serif">Pacifico · Pro</option>
+              <option value="Lobster" data-pro="1" style="font-family:\"Lobster\",sans-serif">Lobster · Pro</option>
+              <option value="Caveat" data-pro="1" style="font-family:\"Caveat\",sans-serif">Caveat · Pro</option>
+              <option value="Indie Flower" data-pro="1" style="font-family:\"Indie Flower\",sans-serif">Indie Flower · Pro</option>
+              <option value="DM Serif Display" data-pro="1" style="font-family:\"DM Serif Display\",sans-serif">DM Serif Display · Pro</option>
+              <option value="Playfair Display" data-pro="1" style="font-family:\"Playfair Display\",sans-serif">Playfair Display · Pro</option>
+              <option value="Merriweather" data-pro="1" style="font-family:\"Merriweather\",sans-serif">Merriweather · Pro</option>
+              <option value="Lora" data-pro="1" style="font-family:\"Lora\",sans-serif">Lora · Pro</option>
               <option value="Familjen Grotesk" style="font-family:\"Familjen Grotesk\",sans-serif">Familjen Grotesk</option>
-              <option value="Montserrat" style="font-family:\"Montserrat\",sans-serif">Montserrat</option>
-              <option value="Poppins" style="font-family:\"Poppins\",sans-serif">Poppins</option>
+              <option value="Montserrat" data-pro="1" style="font-family:\"Montserrat\",sans-serif">Montserrat · Pro</option>
+              <option value="Poppins" data-pro="1" style="font-family:\"Poppins\",sans-serif">Poppins · Pro</option>
               <option value="Roboto" style="font-family:\"Roboto\",sans-serif">Roboto</option>
-              <option value="Space Mono" style="font-family:\"Space Mono\",sans-serif">Space Mono</option>
-              <option value="Courier Prime" style="font-family:\"Courier Prime\",sans-serif">Courier Prime</option>
-              <option value="Press Start 2P" style="font-family:\"Press Start 2P\",sans-serif">Press Start 2P</option>
+              <option value="Space Mono" data-pro="1" style="font-family:\"Space Mono\",sans-serif">Space Mono · Pro</option>
+              <option value="Courier Prime" data-pro="1" style="font-family:\"Courier Prime\",sans-serif">Courier Prime · Pro</option>
+              <option value="Press Start 2P" data-pro="1" style="font-family:\"Press Start 2P\",sans-serif">Press Start 2P · Pro</option>
               <option value="Heebo" style="font-family:\"Heebo\",sans-serif">Heebo · עברית</option>
-              <option value="Rubik" style="font-family:\"Rubik\",sans-serif">Rubik · עברית</option>
-              <option value="Assistant" style="font-family:\"Assistant\",sans-serif">Assistant · עברית</option>
-              <option value="Secular One" style="font-family:\"Secular One\",sans-serif">Secular One · עברית</option>
-              <option value="Frank Ruhl Libre" style="font-family:\"Frank Ruhl Libre\",sans-serif">Frank Ruhl Libre · עברית</option>
-              <option value="Suez One" style="font-family:\"Suez One\",sans-serif">Suez One · עברית</option>
-              <option value="Karantina" style="font-family:\"Karantina\",sans-serif">Karantina · עברית</option>
-              <option value="Varela Round" style="font-family:\"Varela Round\",sans-serif">Varela Round · עברית</option>
+              <option value="Rubik" data-pro="1" style="font-family:\"Rubik\",sans-serif">Rubik · עברית · Pro</option>
+              <option value="Assistant" data-pro="1" style="font-family:\"Assistant\",sans-serif">Assistant · עברית · Pro</option>
+              <option value="Secular One" data-pro="1" style="font-family:\"Secular One\",sans-serif">Secular One · עברית · Pro</option>
+              <option value="Frank Ruhl Libre" data-pro="1" style="font-family:\"Frank Ruhl Libre\",sans-serif">Frank Ruhl Libre · עברית · Pro</option>
+              <option value="Suez One" data-pro="1" style="font-family:\"Suez One\",sans-serif">Suez One · עברית · Pro</option>
+              <option value="Karantina" data-pro="1" style="font-family:\"Karantina\",sans-serif">Karantina · עברית · Pro</option>
+              <option value="Varela Round" data-pro="1" style="font-family:\"Varela Round\",sans-serif">Varela Round · עברית · Pro</option>
             </select>
             <input type="color" id="textColor" aria-label="Text colour" class="cpick">
           </div>
@@ -267,7 +315,7 @@ label.field{grid-template-columns:96px 1fr 48px}
       <div class="swatches" id="fabricSw"></div>
       <div class="kv"><span>Colour</span><div class="seg small" role="group" aria-label="Colour mode"><button id="cSolid" aria-pressed="true">Solid</button><button id="cGrad" aria-pressed="false">Gradient</button></div></div>
       <div class="kv" id="gradRow" hidden><span>Fades to</span><input type="color" id="grad2" class="cpick" value="#3d5a40" aria-label="Gradient end colour"></div>
-      <div class="kv"><span>Wash</span><select id="wash" aria-label="Wash"><option value="none">None</option><option value="acid">Acid wash</option><option value="caustic">Caustic wash</option><option value="vintage">Vintage fade</option><option value="tiedye">Spiral tie-dye</option></select></div>
+      <div class="kv"><span>Wash</span><select id="wash" aria-label="Wash"><option value="none" data-pro="1">None · Pro</option><option value="acid" data-pro="1">Acid wash · Pro</option><option value="caustic" data-pro="1">Caustic wash · Pro</option><option value="vintage" data-pro="1">Vintage fade · Pro</option><option value="tiedye" data-pro="1">Spiral tie-dye · Pro</option></select></div>
       <div id="washOpts" hidden style="display:grid;gap:8px">
         <label class="field">Strength<input type="range" id="washStr" min="0" max="100" value="60"><output id="washStrO">60%</output></label>
         <label class="field">Spot size<input type="range" id="washSize" min="0.5" max="3" step="0.1" value="1.4"><output id="washSizeO">×1.4</output></label>
@@ -279,7 +327,7 @@ label.field{grid-template-columns:96px 1fr 48px}
     </section>
     <section>
       <h2>Appearance</h2>
-      <div class="kv"><span>Material</span><select id="material" aria-label="Material"><option value="cotton">Cotton jersey</option><option value="heavy">Heavyweight cotton</option><option value="fleece">Fleece / French terry</option><option value="pique">Piqué</option><option value="poly">Performance poly</option></select></div>
+      <div class="kv"><span>Material</span><select id="material" aria-label="Material"><option value="cotton" data-pro="1">Cotton jersey · Pro</option><option value="heavy" data-pro="1">Heavyweight cotton · Pro</option><option value="fleece" data-pro="1">Fleece / French terry · Pro</option><option value="pique" data-pro="1">Piqué · Pro</option><option value="poly" data-pro="1">Performance poly · Pro</option></select></div>
       <div class="toggle"><span>Fold shadows (AO)</span><input type="checkbox" id="aoT" checked></div>
       <div class="toggle"><span>Fabric wrinkles</span><input type="checkbox" id="wrT" checked></div>
       <label class="field">Wrinkles<input type="range" id="wrinkles" min="0" max="3" step="0.1" value="1.6"><output id="wrinklesO">1.6</output></label>
@@ -303,7 +351,7 @@ label.field{grid-template-columns:96px 1fr 48px}
       <div class="toggle"><span>Studio backdrop</span><input type="checkbox" id="bdT" checked></div>
       <div class="toggle"><span>Shadow on the backdrop</span><input type="checkbox" id="bdShadow" checked></div>
       <div class="swatches" id="bgSw"></div>
-      <div class="kv"><span>Backdrop light</span><select id="goboSel" aria-label="Backdrop light"><option value="leaf">Leaf shadows</option><option value="palm">Palm fronds</option><option value="blinds">Window blinds</option><option value="window">Window frame</option><option value="none">Soft spot</option></select></div>
+      <div class="kv"><span>Backdrop light</span><select id="goboSel" aria-label="Backdrop light"><option value="leaf" data-pro="1">Leaf shadows · Pro</option><option value="palm" data-pro="1">Palm fronds · Pro</option><option value="blinds" data-pro="1">Window blinds · Pro</option><option value="window" data-pro="1">Window frame · Pro</option><option value="none" data-pro="1">Soft spot · Pro</option></select></div>
       <div class="toggle"><span>Invert light</span><input type="checkbox" id="goboInv"></div>
       <label class="field">Brightness<input type="range" id="bdB" min="0.4" max="1.6" step="0.01" value="0.82"><output id="bdBO">0.82</output></label>
       <label class="field">Contrast<input type="range" id="bdC" min="0" max="1" step="0.01" value="0.75"><output id="bdCO">0.75</output></label>
@@ -322,6 +370,114 @@ label.field{grid-template-columns:96px 1fr 48px}
 </main>
 </div>
 <div class="modal" id="modal" hidden><div class="card"><img id="modalImg" alt="Export preview"><video id="modalVid" controls loop muted playsinline hidden style="max-width:100%;max-height:70vh;border-radius:8px"></video><p id="modalTxt">Right-click the image and choose Save Image As.</p><div class="row"><button class="btn primary" id="modalDl">Download PNG</button><button class="btn" id="modalClose">Close</button></div></div></div>
+
+
+<div class="landing" id="landing" hidden>
+  <div class="landing-inner">
+    <div class="landing-hero">
+      <div class="brand" style="justify-content:center;font-size:18px">
+        <svg width="28" height="28" viewBox="0 0 26 26" aria-hidden="true"><path d="M8 3 3 6.5l2.6 4.2L8 9.6V23h10V9.6l2.4 1.1L23 6.5 18 3c-.9 1.9-2.8 3-5 3s-4.1-1.1-5-3Z" fill="none" stroke="#f2c14e" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        Fashion Builder
+      </div>
+      <h1>Design garments in 2D &amp; 3D</h1>
+      <p>Place text and photos on the sewing pattern — they land exactly on the live shirt. Export stills, pattern sheets, and a turntable video.</p>
+      <div class="row" style="justify-content:center">
+        <button class="btn primary" id="landingOpen">Open editor</button>
+        <button class="btn" id="landingAuth">Sign up / Log in</button>
+      </div>
+    </div>
+    <div class="pricing" id="landingPricing">
+      <div class="price-card">
+        <h3>Free</h3>
+        <div class="price">₪0 <small>/ forever</small></div>
+        <ul>
+          <li>3 artwork layers</li>
+          <li>6 starter fonts (incl. Hebrew)</li>
+          <li>PNG / SVG exports with watermark</li>
+          <li>1 saved design in this browser</li>
+        </ul>
+        <button class="btn" id="pickFree">Continue free</button>
+      </div>
+      <div class="price-card featured">
+        <h3>Pro</h3>
+        <div class="price">₪40 <small>/ month</small></div>
+        <ul>
+          <li>Unlimited layers &amp; all fonts</li>
+          <li>No watermark</li>
+          <li>Turntable video export</li>
+          <li>Save multiple designs</li>
+        </ul>
+        <button class="btn primary" id="pickPro">Activate Pro</button>
+        <p class="sub" style="margin:0">Payments coming soon — use an access code for now.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="authModal" hidden>
+  <div class="card auth-card">
+    <h2 id="authTitle">Sign in</h2>
+    <div class="auth-tabs">
+      <button class="btn" id="authTabIn" aria-pressed="true">Log in</button>
+      <button class="btn" id="authTabUp" aria-pressed="false">Sign up</button>
+    </div>
+    <label>Name (sign up)<input id="authName" type="text" autocomplete="name" placeholder="Your name"></label>
+    <label>Email<input id="authEmail" type="email" autocomplete="email" placeholder="you@email.com" required></label>
+    <label>Password<input id="authPass" type="password" autocomplete="current-password" placeholder="At least 6 characters" required></label>
+    <label id="authCodeRow">Invite / access code <span style="opacity:.7">(optional)</span><input id="authCode" type="text" placeholder="e.g. PRO40" autocomplete="off"></label>
+    <p class="auth-error" id="authError"></p>
+    <div class="row">
+      <button class="btn primary" id="authSubmit">Continue</button>
+      <button class="btn" id="authCancel">Cancel</button>
+    </div>
+    <p class="sub">Demo auth only — stored in this browser. Passwords are hashed (SHA-256 + salt), never stored plain.</p>
+  </div>
+</div>
+
+<div class="modal wide" id="pricingModal" hidden>
+  <div class="card" style="width:min(720px,100%)">
+    <h2 style="text-transform:none;letter-spacing:0;font-size:20px;color:var(--text)">Plans</h2>
+    <div class="pricing">
+      <div class="price-card">
+        <h3>Free</h3>
+        <div class="price">₪0</div>
+        <ul><li>3 layers · 6 fonts · watermarked exports</li></ul>
+      </div>
+      <div class="price-card featured">
+        <h3>Pro · ₪40/mo</h3>
+        <ul><li>Unlimited · all fonts · video · no watermark</li></ul>
+        <button class="btn primary" id="subscribeBtn">Subscribe ₪40/mo</button>
+        <p class="sub" id="paySoon" hidden style="color:var(--accent)">Payments coming soon — use a code below.</p>
+        <label style="display:grid;gap:6px;font-size:12.5px;color:var(--muted)">Access code
+          <input id="redeemCode" type="text" placeholder="PRO40 / FRIENDS" style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px">
+        </label>
+        <button class="btn" id="redeemBtn">Activate Pro with code</button>
+      </div>
+    </div>
+    <div class="row"><button class="btn" id="pricingClose">Close</button></div>
+  </div>
+</div>
+
+<div class="modal" id="designsModal" hidden>
+  <div class="card auth-card" style="width:min(480px,100%)">
+    <h2 style="text-transform:none;letter-spacing:0;font-size:20px;color:var(--text)">My designs</h2>
+    <p class="sub">Pro can keep up to 50 named designs in this browser.</p>
+    <div class="row">
+      <input id="designName" type="text" placeholder="Design name" style="flex:1;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px">
+      <button class="btn primary" id="designSaveAs">Save as</button>
+    </div>
+    <div class="designs-list" id="designsList"></div>
+    <div class="row"><button class="btn" id="designsClose">Close</button></div>
+  </div>
+</div>
+
+<div class="progress-overlay" id="recProgress" hidden>
+  <div class="progress-card">
+    <b id="recProgressLabel">Recording turntable…</b>
+    <div class="progress-bar"><i id="recProgressBar"></i></div>
+    <span class="sub" id="recProgressPct">0%</span>
+  </div>
+</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script type="importmap">
