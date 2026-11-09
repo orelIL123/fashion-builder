@@ -1,7 +1,8 @@
 <title>Fashion Builder</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Anton&family=Permanent+Marker&family=Archivo+Black&family=DM+Serif+Display&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Alfa+Slab+One&family=Anton&family=Archivo+Black&family=Assistant:wght@400;700&family=Bangers&family=Barlow+Condensed:wght@700&family=Bebas+Neue&family=Black+Ops+One&family=Caveat:wght@600&family=Courier+Prime&family=DM+Serif+Display&family=Familjen+Grotesk:wght@400;500;600;700&family=Frank+Ruhl+Libre:wght@400;700&family=Heebo:wght@400;700&family=Indie+Flower&family=JetBrains+Mono:wght@400;500&family=Karantina:wght@400;700&family=Lobster&family=Lora:wght@600&family=Merriweather:wght@700&family=Montserrat:wght@600;800&family=Oswald:wght@500;700&family=Pacifico&family=Permanent+Marker&family=Playfair+Display:wght@700&family=Poppins:wght@600;800&family=Press+Start+2P&family=Righteous&family=Roboto:wght@400;700&family=Rubik:wght@400;700&family=Secular+One&family=Space+Mono&family=Suez+One&family=Teko:wght@600&family=Varela+Round&display=swap">
+<!-- FB-UPGRADE-2D-LAYERS -->
 <style>
 /* Layout: tailor's cutting table — tool rail top, two work surfaces (pattern sheet | 3D fitting), spec panel right. Single dark workshop look by choice. */
 :root{
@@ -117,6 +118,13 @@ label.field{grid-template-columns:96px 1fr 48px}
   aside{border-left:0;padding-left:max(0px,env(safe-area-inset-left,0px))}
   header .hide-s{display:none}
 }
+
+#textFont option{padding:4px 0}
+.place-banner{position:absolute;left:50%;top:54px;transform:translateX(-50%);z-index:5;background:rgba(242,193,78,.95);color:var(--accent-ink);padding:8px 14px;border-radius:10px;font-weight:600;font-size:13px;pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+.layer-tools{display:flex;gap:4px;flex-wrap:wrap}
+.layer-tools .btn{flex:0;padding:6px 10px;font-size:12px}
+#patternPane.placing{outline:2px solid var(--accent);outline-offset:-2px}
+.snap-guide{stroke:var(--accent);stroke-dasharray:4 3}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 
@@ -150,6 +158,7 @@ label.field{grid-template-columns:96px 1fr 48px}
   <div class="stage" id="stage" data-view="split">
     <div class="pane" id="patternPane">
       <div class="pane-head"><span class="eyebrow">Sewing pattern · <b id="pcCount">5 pieces</b></span><span class="seg small" role="group" aria-label="Side" style="margin-left:auto"><button id="pOut" aria-pressed="true">Outside</button><button id="pIn" aria-pressed="false">Inside</button></span><span class="cams" style="margin-left:0"><button id="fitPattern">Fit</button></span></div>
+      <div class="place-banner" id="placeBanner" hidden>Click a pattern piece to place…</div>
       <canvas id="patternCanvas"></canvas>
     </div>
     <div class="pane" id="glPane">
@@ -159,7 +168,7 @@ label.field{grid-template-columns:96px 1fr 48px}
         <span class="cams"><button data-cam="front">Front</button><button data-cam="back">Back</button><button data-cam="side">Side</button></span></div>
       <div class="dock"><button id="resetView"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v3h-3" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>Reset view</button><button id="autoRot" aria-pressed="false" title="Auto-rotate" aria-label="Auto-rotate"><svg width="16" height="16" viewBox="0 0 16 16"><ellipse cx="8" cy="8" rx="6" ry="2.6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 2v12" stroke="currentColor" stroke-width="1.3"/></svg></button></div>
       <div class="live"><i></i>Live preview</div>
-      <div class="hint" id="hint">Drag a print on the shirt or the pattern to move it · drag empty space to rotate</div>
+      <div class="hint" id="hint">Add text/photo on the 2D pattern (or 3D) · drag corners to scale · top handle to rotate · ⌘Z undo</div>
       <div class="loading" id="loading">Loading garment…</div>
     </div>
   </div>
@@ -171,31 +180,85 @@ label.field{grid-template-columns:96px 1fr 48px}
     <div id="paneDesign">
     <section>
       <h2>Artwork</h2>
-      <p class="sub">Add an image or text. Tip: paste a picture with ⌘V.</p>
+      <p class="sub">Add text or a photo on the <b>2D pattern</b> — it shows on the 3D shirt too. Tip: paste ⌘V, or drag a file onto the pattern.</p>
       <div class="row">
-        <button class="btn" id="addImage"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="6" cy="6.5" r="1.2" fill="currentColor"/><path d="m3 12 3.5-3.5 2.5 2.5 2-2 2 2" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>Image</button>
-        <button class="btn" id="addText"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 4V3h10v1M8 3v10M6 13h4" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>Text</button>
+        <button class="btn" id="addImage" title="Place image on pattern"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="6" cy="6.5" r="1.2" fill="currentColor"/><path d="m3 12 3.5-3.5 2.5 2.5 2-2 2 2" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>Photo</button>
+        <button class="btn" id="addText" title="Place text on pattern"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 4V3h10v1M8 3v10M6 13h4" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>Text</button>
         <input type="file" id="file" accept="image/*" hidden>
+      </div>
+      <div class="row">
+        <button class="btn" id="placeText" title="Click a pattern piece to place text">Place text on map</button>
+        <button class="btn" id="placeImage" title="Click a pattern piece to place a photo">Place photo on map</button>
       </div>
     </section>
     <section>
       <h2>Layers <span class="spec" id="layerCount"></span></h2>
       <div class="layers" id="layers"></div>
+      <div class="layer-tools" id="layerTools" hidden>
+        <button class="btn" id="dupLayer" title="Duplicate">Duplicate</button>
+        <button class="btn" id="lockLayer" title="Lock / unlock">Lock</button>
+        <button class="btn" id="layerUp" title="Bring forward">↑</button>
+        <button class="btn" id="layerDown" title="Send backward">↓</button>
+      </div>
       <div id="layerEdit" style="display:grid;gap:10px">
         <div id="textEdit" style="display:grid;gap:8px">
           <input type="text" id="textVal" aria-label="Text">
           <div class="row" style="flex-wrap:nowrap">
             <select id="textFont" aria-label="Font">
-              <option value="Anton">Anton</option><option value="Permanent Marker">Marker</option>
-              <option value="Archivo Black">Archivo Black</option><option value="DM Serif Display">DM Serif</option>
-              <option value="Familjen Grotesk">Grotesk</option>
+              <option value="Anton" style="font-family:\"Anton\",sans-serif">Anton</option>
+              <option value="Bebas Neue" style="font-family:\"Bebas Neue\",sans-serif">Bebas Neue</option>
+              <option value="Archivo Black" style="font-family:\"Archivo Black\",sans-serif">Archivo Black</option>
+              <option value="Oswald" style="font-family:\"Oswald\",sans-serif">Oswald</option>
+              <option value="Barlow Condensed" style="font-family:\"Barlow Condensed\",sans-serif">Barlow Condensed</option>
+              <option value="Black Ops One" style="font-family:\"Black Ops One\",sans-serif">Black Ops One</option>
+              <option value="Alfa Slab One" style="font-family:\"Alfa Slab One\",sans-serif">Alfa Slab One</option>
+              <option value="Abril Fatface" style="font-family:\"Abril Fatface\",sans-serif">Abril Fatface</option>
+              <option value="Teko" style="font-family:\"Teko\",sans-serif">Teko</option>
+              <option value="Bangers" style="font-family:\"Bangers\",sans-serif">Bangers</option>
+              <option value="Righteous" style="font-family:\"Righteous\",sans-serif">Righteous</option>
+              <option value="Permanent Marker" style="font-family:\"Permanent Marker\",sans-serif">Permanent Marker</option>
+              <option value="Pacifico" style="font-family:\"Pacifico\",sans-serif">Pacifico</option>
+              <option value="Lobster" style="font-family:\"Lobster\",sans-serif">Lobster</option>
+              <option value="Caveat" style="font-family:\"Caveat\",sans-serif">Caveat</option>
+              <option value="Indie Flower" style="font-family:\"Indie Flower\",sans-serif">Indie Flower</option>
+              <option value="DM Serif Display" style="font-family:\"DM Serif Display\",sans-serif">DM Serif Display</option>
+              <option value="Playfair Display" style="font-family:\"Playfair Display\",sans-serif">Playfair Display</option>
+              <option value="Merriweather" style="font-family:\"Merriweather\",sans-serif">Merriweather</option>
+              <option value="Lora" style="font-family:\"Lora\",sans-serif">Lora</option>
+              <option value="Familjen Grotesk" style="font-family:\"Familjen Grotesk\",sans-serif">Familjen Grotesk</option>
+              <option value="Montserrat" style="font-family:\"Montserrat\",sans-serif">Montserrat</option>
+              <option value="Poppins" style="font-family:\"Poppins\",sans-serif">Poppins</option>
+              <option value="Roboto" style="font-family:\"Roboto\",sans-serif">Roboto</option>
+              <option value="Space Mono" style="font-family:\"Space Mono\",sans-serif">Space Mono</option>
+              <option value="Courier Prime" style="font-family:\"Courier Prime\",sans-serif">Courier Prime</option>
+              <option value="Press Start 2P" style="font-family:\"Press Start 2P\",sans-serif">Press Start 2P</option>
+              <option value="Heebo" style="font-family:\"Heebo\",sans-serif">Heebo · עברית</option>
+              <option value="Rubik" style="font-family:\"Rubik\",sans-serif">Rubik · עברית</option>
+              <option value="Assistant" style="font-family:\"Assistant\",sans-serif">Assistant · עברית</option>
+              <option value="Secular One" style="font-family:\"Secular One\",sans-serif">Secular One · עברית</option>
+              <option value="Frank Ruhl Libre" style="font-family:\"Frank Ruhl Libre\",sans-serif">Frank Ruhl Libre · עברית</option>
+              <option value="Suez One" style="font-family:\"Suez One\",sans-serif">Suez One · עברית</option>
+              <option value="Karantina" style="font-family:\"Karantina\",sans-serif">Karantina · עברית</option>
+              <option value="Varela Round" style="font-family:\"Varela Round\",sans-serif">Varela Round · עברית</option>
             </select>
             <input type="color" id="textColor" aria-label="Text colour" class="cpick">
           </div>
         </div>
+        <div id="imgEdit" hidden style="display:grid;gap:8px">
+          <div class="row">
+            <button class="btn" id="flipH" title="Flip horizontal">Flip H</button>
+            <button class="btn" id="flipV" title="Flip vertical">Flip V</button>
+          </div>
+        </div>
         <label class="field">Width<input type="range" id="lw" min="2" max="56" step="0.5"><output id="lwo"></output></label>
         <label class="field">Rotate<input type="range" id="lr" min="-180" max="180" step="1"><output id="lro"></output></label>
+        <label class="field">Opacity<input type="range" id="lop" min="5" max="100" step="1" value="100"><output id="lopO">100%</output></label>
         <div class="toggle"><span>Print inside (neck label)</span><input type="checkbox" id="lInside"></div>
+      </div>
+      <div class="row" style="margin-top:4px">
+        <button class="btn" id="saveDesign" title="Save to this browser">Save</button>
+        <button class="btn" id="loadDesign" title="Load saved design">Load</button>
+        <button class="btn" id="exportPattern" title="Export 2D pattern PNG">Pattern PNG</button>
       </div>
     </section>
     <section>

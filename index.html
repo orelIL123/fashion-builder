@@ -3,7 +3,8 @@
 <title>Fashion Builder</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Anton&family=Permanent+Marker&family=Archivo+Black&family=DM+Serif+Display&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Alfa+Slab+One&family=Anton&family=Archivo+Black&family=Assistant:wght@400;700&family=Bangers&family=Barlow+Condensed:wght@700&family=Bebas+Neue&family=Black+Ops+One&family=Caveat:wght@600&family=Courier+Prime&family=DM+Serif+Display&family=Familjen+Grotesk:wght@400;500;600;700&family=Frank+Ruhl+Libre:wght@400;700&family=Heebo:wght@400;700&family=Indie+Flower&family=JetBrains+Mono:wght@400;500&family=Karantina:wght@400;700&family=Lobster&family=Lora:wght@600&family=Merriweather:wght@700&family=Montserrat:wght@600;800&family=Oswald:wght@500;700&family=Pacifico&family=Permanent+Marker&family=Playfair+Display:wght@700&family=Poppins:wght@600;800&family=Press+Start+2P&family=Righteous&family=Roboto:wght@400;700&family=Rubik:wght@400;700&family=Secular+One&family=Space+Mono&family=Suez+One&family=Teko:wght@600&family=Varela+Round&display=swap">
+<!-- FB-UPGRADE-2D-LAYERS -->
 <style>
 /* Layout: tailor's cutting table — tool rail top, two work surfaces (pattern sheet | 3D fitting), spec panel right. Single dark workshop look by choice. */
 :root{
@@ -119,6 +120,13 @@ label.field{grid-template-columns:96px 1fr 48px}
   aside{border-left:0;padding-left:max(0px,env(safe-area-inset-left,0px))}
   header .hide-s{display:none}
 }
+
+#textFont option{padding:4px 0}
+.place-banner{position:absolute;left:50%;top:54px;transform:translateX(-50%);z-index:5;background:rgba(242,193,78,.95);color:var(--accent-ink);padding:8px 14px;border-radius:10px;font-weight:600;font-size:13px;pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+.layer-tools{display:flex;gap:4px;flex-wrap:wrap}
+.layer-tools .btn{flex:0;padding:6px 10px;font-size:12px}
+#patternPane.placing{outline:2px solid var(--accent);outline-offset:-2px}
+.snap-guide{stroke:var(--accent);stroke-dasharray:4 3}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 
@@ -153,6 +161,7 @@ label.field{grid-template-columns:96px 1fr 48px}
   <div class="stage" id="stage" data-view="split">
     <div class="pane" id="patternPane">
       <div class="pane-head"><span class="eyebrow">Sewing pattern · <b id="pcCount">5 pieces</b></span><span class="seg small" role="group" aria-label="Side" style="margin-left:auto"><button id="pOut" aria-pressed="true">Outside</button><button id="pIn" aria-pressed="false">Inside</button></span><span class="cams" style="margin-left:0"><button id="fitPattern">Fit</button></span></div>
+      <div class="place-banner" id="placeBanner" hidden>Click a pattern piece to place…</div>
       <canvas id="patternCanvas"></canvas>
     </div>
     <div class="pane" id="glPane">
@@ -162,7 +171,7 @@ label.field{grid-template-columns:96px 1fr 48px}
         <span class="cams"><button data-cam="front">Front</button><button data-cam="back">Back</button><button data-cam="side">Side</button></span></div>
       <div class="dock"><button id="resetView"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v3h-3" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>Reset view</button><button id="autoRot" aria-pressed="false" title="Auto-rotate" aria-label="Auto-rotate"><svg width="16" height="16" viewBox="0 0 16 16"><ellipse cx="8" cy="8" rx="6" ry="2.6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 2v12" stroke="currentColor" stroke-width="1.3"/></svg></button></div>
       <div class="live"><i></i>Live preview</div>
-      <div class="hint" id="hint">Drag a print on the shirt or the pattern to move it · drag empty space to rotate</div>
+      <div class="hint" id="hint">Add text/photo on the 2D pattern (or 3D) · drag corners to scale · top handle to rotate · ⌘Z undo</div>
       <div class="loading" id="loading">Loading garment…</div>
     </div>
   </div>
@@ -174,31 +183,85 @@ label.field{grid-template-columns:96px 1fr 48px}
     <div id="paneDesign">
     <section>
       <h2>Artwork</h2>
-      <p class="sub">Add an image or text. Tip: paste a picture with ⌘V.</p>
+      <p class="sub">Add text or a photo on the <b>2D pattern</b> — it shows on the 3D shirt too. Tip: paste ⌘V, or drag a file onto the pattern.</p>
       <div class="row">
-        <button class="btn" id="addImage"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="6" cy="6.5" r="1.2" fill="currentColor"/><path d="m3 12 3.5-3.5 2.5 2.5 2-2 2 2" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>Image</button>
-        <button class="btn" id="addText"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 4V3h10v1M8 3v10M6 13h4" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>Text</button>
+        <button class="btn" id="addImage" title="Place image on pattern"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="6" cy="6.5" r="1.2" fill="currentColor"/><path d="m3 12 3.5-3.5 2.5 2.5 2-2 2 2" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>Photo</button>
+        <button class="btn" id="addText" title="Place text on pattern"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 4V3h10v1M8 3v10M6 13h4" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>Text</button>
         <input type="file" id="file" accept="image/*" hidden>
+      </div>
+      <div class="row">
+        <button class="btn" id="placeText" title="Click a pattern piece to place text">Place text on map</button>
+        <button class="btn" id="placeImage" title="Click a pattern piece to place a photo">Place photo on map</button>
       </div>
     </section>
     <section>
       <h2>Layers <span class="spec" id="layerCount"></span></h2>
       <div class="layers" id="layers"></div>
+      <div class="layer-tools" id="layerTools" hidden>
+        <button class="btn" id="dupLayer" title="Duplicate">Duplicate</button>
+        <button class="btn" id="lockLayer" title="Lock / unlock">Lock</button>
+        <button class="btn" id="layerUp" title="Bring forward">↑</button>
+        <button class="btn" id="layerDown" title="Send backward">↓</button>
+      </div>
       <div id="layerEdit" style="display:grid;gap:10px">
         <div id="textEdit" style="display:grid;gap:8px">
           <input type="text" id="textVal" aria-label="Text">
           <div class="row" style="flex-wrap:nowrap">
             <select id="textFont" aria-label="Font">
-              <option value="Anton">Anton</option><option value="Permanent Marker">Marker</option>
-              <option value="Archivo Black">Archivo Black</option><option value="DM Serif Display">DM Serif</option>
-              <option value="Familjen Grotesk">Grotesk</option>
+              <option value="Anton" style="font-family:\"Anton\",sans-serif">Anton</option>
+              <option value="Bebas Neue" style="font-family:\"Bebas Neue\",sans-serif">Bebas Neue</option>
+              <option value="Archivo Black" style="font-family:\"Archivo Black\",sans-serif">Archivo Black</option>
+              <option value="Oswald" style="font-family:\"Oswald\",sans-serif">Oswald</option>
+              <option value="Barlow Condensed" style="font-family:\"Barlow Condensed\",sans-serif">Barlow Condensed</option>
+              <option value="Black Ops One" style="font-family:\"Black Ops One\",sans-serif">Black Ops One</option>
+              <option value="Alfa Slab One" style="font-family:\"Alfa Slab One\",sans-serif">Alfa Slab One</option>
+              <option value="Abril Fatface" style="font-family:\"Abril Fatface\",sans-serif">Abril Fatface</option>
+              <option value="Teko" style="font-family:\"Teko\",sans-serif">Teko</option>
+              <option value="Bangers" style="font-family:\"Bangers\",sans-serif">Bangers</option>
+              <option value="Righteous" style="font-family:\"Righteous\",sans-serif">Righteous</option>
+              <option value="Permanent Marker" style="font-family:\"Permanent Marker\",sans-serif">Permanent Marker</option>
+              <option value="Pacifico" style="font-family:\"Pacifico\",sans-serif">Pacifico</option>
+              <option value="Lobster" style="font-family:\"Lobster\",sans-serif">Lobster</option>
+              <option value="Caveat" style="font-family:\"Caveat\",sans-serif">Caveat</option>
+              <option value="Indie Flower" style="font-family:\"Indie Flower\",sans-serif">Indie Flower</option>
+              <option value="DM Serif Display" style="font-family:\"DM Serif Display\",sans-serif">DM Serif Display</option>
+              <option value="Playfair Display" style="font-family:\"Playfair Display\",sans-serif">Playfair Display</option>
+              <option value="Merriweather" style="font-family:\"Merriweather\",sans-serif">Merriweather</option>
+              <option value="Lora" style="font-family:\"Lora\",sans-serif">Lora</option>
+              <option value="Familjen Grotesk" style="font-family:\"Familjen Grotesk\",sans-serif">Familjen Grotesk</option>
+              <option value="Montserrat" style="font-family:\"Montserrat\",sans-serif">Montserrat</option>
+              <option value="Poppins" style="font-family:\"Poppins\",sans-serif">Poppins</option>
+              <option value="Roboto" style="font-family:\"Roboto\",sans-serif">Roboto</option>
+              <option value="Space Mono" style="font-family:\"Space Mono\",sans-serif">Space Mono</option>
+              <option value="Courier Prime" style="font-family:\"Courier Prime\",sans-serif">Courier Prime</option>
+              <option value="Press Start 2P" style="font-family:\"Press Start 2P\",sans-serif">Press Start 2P</option>
+              <option value="Heebo" style="font-family:\"Heebo\",sans-serif">Heebo · עברית</option>
+              <option value="Rubik" style="font-family:\"Rubik\",sans-serif">Rubik · עברית</option>
+              <option value="Assistant" style="font-family:\"Assistant\",sans-serif">Assistant · עברית</option>
+              <option value="Secular One" style="font-family:\"Secular One\",sans-serif">Secular One · עברית</option>
+              <option value="Frank Ruhl Libre" style="font-family:\"Frank Ruhl Libre\",sans-serif">Frank Ruhl Libre · עברית</option>
+              <option value="Suez One" style="font-family:\"Suez One\",sans-serif">Suez One · עברית</option>
+              <option value="Karantina" style="font-family:\"Karantina\",sans-serif">Karantina · עברית</option>
+              <option value="Varela Round" style="font-family:\"Varela Round\",sans-serif">Varela Round · עברית</option>
             </select>
             <input type="color" id="textColor" aria-label="Text colour" class="cpick">
           </div>
         </div>
+        <div id="imgEdit" hidden style="display:grid;gap:8px">
+          <div class="row">
+            <button class="btn" id="flipH" title="Flip horizontal">Flip H</button>
+            <button class="btn" id="flipV" title="Flip vertical">Flip V</button>
+          </div>
+        </div>
         <label class="field">Width<input type="range" id="lw" min="2" max="56" step="0.5"><output id="lwo"></output></label>
         <label class="field">Rotate<input type="range" id="lr" min="-180" max="180" step="1"><output id="lro"></output></label>
+        <label class="field">Opacity<input type="range" id="lop" min="5" max="100" step="1" value="100"><output id="lopO">100%</output></label>
         <div class="toggle"><span>Print inside (neck label)</span><input type="checkbox" id="lInside"></div>
+      </div>
+      <div class="row" style="margin-top:4px">
+        <button class="btn" id="saveDesign" title="Save to this browser">Save</button>
+        <button class="btn" id="loadDesign" title="Load saved design">Load</button>
+        <button class="btn" id="exportPattern" title="Export 2D pattern PNG">Pattern PNG</button>
       </div>
     </section>
     <section>
@@ -327,22 +390,33 @@ const S = { fabric:'#40593f', grad:false, grad2:'#1f2a44', rib:'#40593f', ribMat
 let uid = 0;
 
 // ---------- layers ----------
+async function ensureFont(font){
+  try { await document.fonts.load(`220px "${font}"`); } catch(_){}
+  try { await document.fonts.load(`700 220px "${font}"`); } catch(_){}
+}
 function textBitmap(L){
   const c = document.createElement('canvas'), g = c.getContext('2d');
-  const fs = 220; g.font = `${fs}px "${L.font}"`;
+  const fs = 220; g.font = `700 ${fs}px "${L.font}", sans-serif`;
   const lines = L.text.split('\n'); const w = Math.max(...lines.map(l=>g.measureText(l).width), 10);
   c.width = Math.ceil(w + 40); c.height = Math.ceil(lines.length*fs*1.05 + 40);
-  g.font = `${fs}px "${L.font}"`; g.fillStyle = L.color; g.textAlign='center'; g.textBaseline='middle';
+  g.font = `700 ${fs}px "${L.font}", sans-serif`; g.fillStyle = L.color; g.textAlign='center'; g.textBaseline='middle';
   lines.forEach((l,i)=> g.fillText(l, c.width/2, 20 + fs*0.55 + i*fs*1.05));
   L.src = c; L.aspect = c.height/c.width; L.thumb = null;
 }
+async function rebuildText(L){ await ensureFont(L.font); textBitmap(L); }
 function addText(text, x, y, wCm, o={}){
-  const L = {id:++uid, kind:'text', text, font:o.font||'Anton', color:o.color||'#1b1b1b', x, y, w:wCm*PX, rot:o.rot||0, visible:true, inside:!!o.inside};
+  const L = {id:++uid, kind:'text', text, font:o.font||'Anton', color:o.color||'#1b1b1b', x, y, w:wCm*PX, rot:o.rot||0, opacity:o.opacity??1, flipX:!!o.flipX, flipY:!!o.flipY, locked:!!o.locked, visible:true, inside:!!o.inside};
   textBitmap(L); S.layers.push(L); return L;
 }
 function addImage(src, name, x, y, wCm, o={}){
-  const L = {id:++uid, kind:'image', name, src, aspect:src.height/src.width, x, y, w:wCm*PX, rot:o.rot||0, visible:true, inside:!!o.inside};
+  const L = {id:++uid, kind:'image', name, src, aspect:src.height/src.width, x, y, w:wCm*PX, rot:o.rot||0, opacity:o.opacity??1, flipX:!!o.flipX, flipY:!!o.flipY, locked:!!o.locked, visible:true, inside:!!o.inside};
   S.layers.push(L); return L;
+}
+function cloneLayer(L){
+  const o = {font:L.font, color:L.color, rot:L.rot, opacity:L.opacity, flipX:L.flipX, flipY:L.flipY, inside:L.inside};
+  const nx = L.x + 8*PX, ny = L.y + 8*PX, wCm = L.w/PX;
+  if (L.kind==='text') return addText(L.text, nx, ny, wCm, o);
+  return addImage(L.src, (L.name||'Image')+' copy', nx, ny, wCm, o);
 }
 const layerName = L => L.kind==='text' ? L.text.replace(/\n/g,' ') : L.name;
 const layerPiece = L => { const p = pieceAt(L.x, L.y); return p ? p.label : 'Off pattern'; };
@@ -362,8 +436,17 @@ function restore(s){ const o = JSON.parse(s); const old = new Map(S.layers.map(l
 function updUndo(){ $('undo').disabled = hist.length<2; $('redo').disabled = !fut.length; }
 $('undo').onclick = ()=>{ if(hist.length<2) return; fut.push(hist.pop()); restore(hist.at(-1)); updUndo(); };
 $('redo').onclick = ()=>{ if(!fut.length) return; const s = fut.pop(); hist.push(s); restore(s); updUndo(); };
-addEventListener('keydown', e=>{ if(e.target.matches('input[type=text]')) return; if((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==='z'){ e.preventDefault(); (e.shiftKey?$('redo'):$('undo')).click(); }
-  if((e.key==='Delete'||e.key==='Backspace') && cur() && !e.target.matches('input,select')){ S.layers = S.layers.filter(l=>l!==cur()); S.sel = S.layers.at(-1)?.id ?? null; composeSheet(); renderLayers(); commit(); } });
+addEventListener('keydown', e=>{ if(e.target.matches('input[type=text],textarea')) return;
+  if((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==='z'){ e.preventDefault(); (e.shiftKey?$('redo'):$('undo')).click(); }
+  if((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==='d' && cur() && !e.target.matches('input,select')){ e.preventDefault(); $('dupLayer').click(); }
+  if((e.key==='Delete'||e.key==='Backspace') && cur() && !cur().locked && !e.target.matches('input,select')){ S.layers = S.layers.filter(l=>l!==cur()); S.sel = S.layers.at(-1)?.id ?? null; composeSheet(); renderLayers(); commit(); }
+  if (cur() && !cur().locked && !e.target.matches('input,select') && ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){
+    e.preventDefault(); const step = (e.shiftKey?5:1)*PX; const L=cur();
+    if (e.key==='ArrowLeft') L.x-=step; if (e.key==='ArrowRight') L.x+=step;
+    if (e.key==='ArrowUp') L.y-=step; if (e.key==='ArrowDown') L.y+=step;
+    composeSheet(); syncLayerUI(); commit();
+  }
+});
 
 // ---------- noise helpers ----------
 function makeNoise(seed){ const p = new Uint8Array(512); let s = seed*9973+1; for(let i=0;i<256;i++) p[i]=i;
@@ -437,7 +520,9 @@ function paintBase(g){
 function paintLayers(g, inside){
   g.save(); g.clip(allPieces);
   for (const L of S.layers){ if(!L.visible || !!L.inside!==inside) continue;
-    g.save(); g.translate(L.x, L.y); g.rotate(L.rot*Math.PI/180); const w=L.w, h=L.w*L.aspect; g.drawImage(L.src,-w/2,-h/2,w,h); g.restore(); }
+    g.save(); g.globalAlpha = L.opacity ?? 1; g.translate(L.x, L.y); g.rotate(L.rot*Math.PI/180);
+    const sx = L.flipX ? -1 : 1, sy = L.flipY ? -1 : 1; if (sx!==1||sy!==1) g.scale(sx, sy);
+    const w=L.w, h=L.w*L.aspect; g.drawImage(L.src,-w/2,-h/2,w,h); g.restore(); }
   g.restore();
 }
 function paintWash(g){
@@ -503,31 +588,114 @@ function drawPattern(){
   if (L && off && L.visible && !!L.inside===PV.inside){ const c = layerCorners(L).map(([x,y])=>toView(x+off[0],y+off[1]));
     pg.strokeStyle='#f2c14e'; pg.lineWidth=1.5; pg.setLineDash([]); pg.beginPath(); c.forEach(([x,y],i)=>i?pg.lineTo(x,y):pg.moveTo(x,y)); pg.closePath(); pg.stroke();
     pg.fillStyle='#f2c14e'; c.forEach(([x,y])=>pg.fillRect(x-4,y-4,8,8));
+    // rotate handle above top edge midpoint
+    const midTop = [(c[0][0]+c[1][0])/2, (c[0][1]+c[1][1])/2];
+    const ang = Math.atan2(c[1][1]-c[0][1], c[1][0]-c[0][0]) - Math.PI/2;
+    const rh = [midTop[0]+Math.cos(ang)*28, midTop[1]+Math.sin(ang)*28];
+    pg.beginPath(); pg.moveTo(midTop[0], midTop[1]); pg.lineTo(rh[0], rh[1]); pg.stroke();
+    pg.beginPath(); pg.arc(rh[0], rh[1], 6, 0, Math.PI*2); pg.fill();
+    L._rotHandle = rh;
     pg.font='500 10.5px "JetBrains Mono", monospace'; const lab=`${(L.w/PX).toFixed(1)} × ${(L.w*L.aspect/PX).toFixed(1)} cm`;
-    const tw = pg.measureText(lab).width+12; const lx=(c[2][0]+c[3][0])/2, ly=Math.max(c[2][1],c[3][1]); pg.fillStyle='#f2c14e'; pg.fillRect(lx-tw/2, ly+8, tw, 18); pg.fillStyle='#1d1a10'; pg.fillText(lab, lx, ly+21); }
+    const tw = pg.measureText(lab).width+12; const lx=(c[2][0]+c[3][0])/2, ly=Math.max(c[2][1],c[3][1]); pg.fillStyle='#f2c14e'; pg.fillRect(lx-tw/2, ly+8, tw, 18); pg.fillStyle='#1d1a10'; pg.fillText(lab, lx, ly+21);
+    if (L.locked){ pg.fillStyle='rgba(242,193,78,.85)'; pg.font='600 11px "Familjen Grotesk"'; pg.fillText('locked', lx, ly+42); }
+  }
+  if (PV.guides){ pg.save(); pg.strokeStyle='rgba(242,193,78,.7)'; pg.lineWidth=1; pg.setLineDash([4,3]);
+    for (const g of PV.guides){ pg.beginPath(); if (g.kind==='v'){ pg.moveTo(g.x,0); pg.lineTo(g.x,H); } else { pg.moveTo(0,g.y); pg.lineTo(W,g.y); } pg.stroke(); }
+    pg.restore(); }
 }
+function rotHandleOf(L){ return L && L._rotHandle; }
+
 function hitLayer(x,y,inside){ for (let i=S.layers.length-1;i>=0;i--){ const L=S.layers[i]; if(!L.visible || !!L.inside!==inside) continue;
   const a=-L.rot*Math.PI/180, dx=x-L.x, dy=y-L.y, lx=dx*Math.cos(a)-dy*Math.sin(a), ly=dx*Math.sin(a)+dy*Math.cos(a);
   if (Math.abs(lx)<=L.w/2 && Math.abs(ly)<=L.w*L.aspect/2) return L; } return null; }
 
 let pdrag = null;
+let placeMode = null; // 'text' | 'image' | null
+function setPlaceMode(mode){
+  placeMode = mode;
+  const on = !!mode;
+  $('placeBanner').hidden = !on;
+  $('placeBanner').textContent = mode==='text' ? 'Click a pattern piece to place text…' : mode==='image' ? 'Click a pattern piece to place a photo…' : '';
+  $('patternPane').classList.toggle('placing', on);
+  pc.style.cursor = on ? 'crosshair' : 'grab';
+}
+function snapLayer(L, sx, sy){
+  PV.guides = [];
+  const p = pieceAt(sx, sy); if (!p) return [sx, sy];
+  const cx = (p.box[0]+p.box[2])/2, cy = (p.box[1]+p.box[3])/2;
+  const thr = 4*PX; let nx=sx, ny=sy;
+  if (Math.abs(sx-cx)<thr){ nx=cx; const [vx] = toView(cx+(p.dx||0), 0); PV.guides.push({kind:'v', x:vx}); }
+  if (Math.abs(sy-cy)<thr){ ny=cy; const [,vy] = toView(0, cy+(p.dy||0)); PV.guides.push({kind:'h', y:vy}); }
+  return [nx, ny];
+}
 pc.addEventListener('pointerdown', e=>{
   const r = pc.getBoundingClientRect(), vx=e.clientX-r.left, vy=e.clientY-r.top; const [dx,dy] = toSheet(vx,vy);
+  if (placeMode){
+    const hit = fromDisplay(dx,dy);
+    if (!hit){ toast('Click on a pattern piece'); return; }
+    const {sx,sy} = hit;
+    if (placeMode==='text'){
+      const L = addText('YOUR TEXT', sx, sy, 18); select(L.id); rebuildText(L).then(()=>{ composeSheet(); renderLayers(); commit(); });
+      setPlaceMode(null); composeSheet(); commit(); return;
+    }
+    if (placeMode==='image'){
+      if (pendingImage){
+        const img = pendingImage.img, name = pendingImage.name; pendingImage = null; setPlaceMode(null);
+        const L = addImage(img, name, sx, sy, 24); select(L.id); composeSheet(); commit(); return;
+      }
+      pendingPlace = {sx, sy}; setPlaceMode(null); $('file').click(); return;
+    }
+  }
   const sel = cur(), off = sel && offsetOf(sel);
-  if (sel && off && !!sel.inside===PV.inside){ const c = layerCorners(sel).map(([x,y])=>toView(x+off[0],y+off[1])); const hi = c.findIndex(([x,y])=>Math.hypot(x-vx,y-vy)<11);
-    if (hi>=0){ pdrag={mode:'scale', L:sel, off, d0:Math.hypot(dx-off[0]-sel.x, dy-off[1]-sel.y), w0:sel.w}; pc.setPointerCapture(e.pointerId); return; } }
+  if (sel && !sel.locked && off && !!sel.inside===PV.inside){
+    const rh = rotHandleOf(sel);
+    if (rh && Math.hypot(rh[0]-vx, rh[1]-vy)<12){ pdrag={mode:'rotate', L:sel, off}; pc.setPointerCapture(e.pointerId); return; }
+    const c = layerCorners(sel).map(([x,y])=>toView(x+off[0],y+off[1])); const hi = c.findIndex(([x,y])=>Math.hypot(x-vx,y-vy)<11);
+    if (hi>=0){ pdrag={mode:'scale', L:sel, off, d0:Math.hypot(dx-off[0]-sel.x, dy-off[1]-sel.y), w0:sel.w}; pc.setPointerCapture(e.pointerId); return; }
+  }
   const hit = fromDisplay(dx,dy); const L = hit && hitLayer(hit.sx,hit.sy,PV.inside);
-  if (L){ select(L.id); pdrag={mode:'move', L, off:[hit.p.dx,hit.p.dy], dx:hit.sx-L.x, dy:hit.sy-L.y}; } else pdrag={mode:'pan', x:vx, y:vy, ox:PV.ox, oy:PV.oy};
+  if (L){ select(L.id); if (L.locked){ pdrag=null; return; } pdrag={mode:'move', L, off:[hit.p.dx,hit.p.dy], dx:hit.sx-L.x, dy:hit.sy-L.y}; }
+  else pdrag={mode:'pan', x:vx, y:vy, ox:PV.ox, oy:PV.oy};
   pc.setPointerCapture(e.pointerId);
 });
 pc.addEventListener('pointermove', e=>{
   const r = pc.getBoundingClientRect(), vx=e.clientX-r.left, vy=e.clientY-r.top; const [dx,dy] = toSheet(vx,vy);
-  if (!pdrag){ const hit = fromDisplay(dx,dy); pc.style.cursor = hit && hitLayer(hit.sx,hit.sy,PV.inside)?'move':'grab'; return; }
-  if (pdrag.mode==='move'){ pdrag.L.x = dx-pdrag.off[0]-pdrag.dx; pdrag.L.y = dy-pdrag.off[1]-pdrag.dy; composeSheet(); syncLayerUI(); }
+  if (!pdrag){
+    if (placeMode){ pc.style.cursor='crosshair'; return; }
+    const sel = cur(), off = sel && offsetOf(sel);
+    const rh = sel && !sel.locked && off && rotHandleOf(sel);
+    if (rh && Math.hypot(rh[0]-vx, rh[1]-vy)<12){ pc.style.cursor='grab'; return; }
+    const hit = fromDisplay(dx,dy); pc.style.cursor = hit && hitLayer(hit.sx,hit.sy,PV.inside)?'move':'grab'; return;
+  }
+  if (pdrag.mode==='move'){
+    let nx = dx-pdrag.off[0]-pdrag.dx, ny = dy-pdrag.off[1]-pdrag.dy;
+    [nx,ny] = snapLayer(pdrag.L, nx, ny);
+    pdrag.L.x = nx; pdrag.L.y = ny; composeSheet(); syncLayerUI();
+  }
   else if (pdrag.mode==='scale'){ const d = Math.hypot(dx-pdrag.off[0]-pdrag.L.x, dy-pdrag.off[1]-pdrag.L.y); pdrag.L.w = Math.max(1.5*PX, pdrag.w0*d/pdrag.d0); composeSheet(); syncLayerUI(); }
+  else if (pdrag.mode==='rotate'){ const ang = Math.atan2(dy-pdrag.off[1]-pdrag.L.y, dx-pdrag.off[0]-pdrag.L.x)*180/Math.PI + 90;
+    pdrag.L.rot = ((Math.round(ang/5)*5)%360+540)%360-180; composeSheet(); syncLayerUI(); }
   else { PV.ox = pdrag.ox + vx-pdrag.x; PV.oy = pdrag.oy + vy-pdrag.y; drawPattern(); }
 });
-pc.addEventListener('pointerup', ()=>{ if(pdrag && pdrag.mode!=='pan'){ renderLayers(); commit(); } pdrag=null; });
+pc.addEventListener('pointerup', ()=>{ PV.guides=null; if(pdrag && pdrag.mode!=='pan'){ renderLayers(); commit(); } pdrag=null; drawPattern(); });
+let pendingPlace = null;
+let pendingImage = null;
+$('placeText').onclick = ()=>{ pendingImage=null; setPlaceMode(placeMode==='text' ? null : 'text'); };
+$('placeImage').onclick = ()=>{
+  if (placeMode==='image'){ pendingImage=null; setPlaceMode(null); return; }
+  const input = $('file');
+  const once = e=>{
+    const file = e.target.files?.[0]; input.removeEventListener('change', once);
+    if(!file || !file.type.startsWith('image/')) return;
+    const img = new Image();
+    img.onload = ()=>{ pendingImage = {img, name:(file.name||'Photo').replace(/\.[^.]+$/,'')}; setPlaceMode('image');
+      $('placeBanner').textContent = 'Click a pattern piece to place the photo…'; };
+    img.src = URL.createObjectURL(file);
+  };
+  skipFileAuto = true; input.addEventListener('change', once);
+  pendingPlace = null; input.click();
+};
+addEventListener('keydown', e=>{ if(e.key==='Escape' && placeMode){ pendingImage=null; setPlaceMode(null); } });
 pc.addEventListener('wheel', e=>{ e.preventDefault(); const r=pc.getBoundingClientRect(), vx=e.clientX-r.left, vy=e.clientY-r.top;
   const f = Math.exp(-e.deltaY*0.0015); const [sx,sy]=toSheet(vx,vy); PV.k*=f; PV.ox = vx - sx*PV.k; PV.oy = vy - sy*PV.k; drawPattern(); }, {passive:false});
 $('fitPattern').onclick = fitPattern;
@@ -697,7 +865,7 @@ function hitUV(e){ const r = glc.getBoundingClientRect(); ndc.set(((e.clientX-r.
   ray.setFromCamera(ndc, camera); const h = ray.intersectObjects(shirtMeshes, false)[0]; return h && h.uv ? [h.uv.x*TEX, h.uv.y*TEX] : null; }
 let gdrag = null;
 glc.addEventListener('pointerdown', e=>{ const uv = hitUV(e); if(!uv) return; const L = hitLayer(...uv, false); if(!L) return;
-  select(L.id); gdrag = {L, piece:pieceAt(...uv), dx:uv[0]-L.x, dy:uv[1]-L.y}; controls.enabled = false; glc.setPointerCapture(e.pointerId); }, true);
+  select(L.id); if(L.locked) return; gdrag = {L, piece:pieceAt(...uv), dx:uv[0]-L.x, dy:uv[1]-L.y}; controls.enabled = false; glc.setPointerCapture(e.pointerId); }, true);
 glc.addEventListener('pointermove', e=>{ if(!gdrag){ const uv=hitUV(e); glc.style.cursor = uv && hitLayer(...uv,false) ? 'move' : 'grab'; return; }
   const uv = hitUV(e); if(!uv) return; const p = pieceAt(...uv); if(!p || p!==gdrag.piece) return;
   gdrag.L.x = uv[0]-gdrag.dx; gdrag.L.y = uv[1]-gdrag.dy; composeSheet(); });
@@ -730,10 +898,10 @@ function renderLayers(){
     eye.innerHTML = L.visible ? '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M1 8s2.6-5 7-5 7 5 7 5-2.6 5-7 5-7-5-7-5Z" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="2.2" fill="currentColor"/></svg>' : '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M2 2l12 12M1 8s2.6-5 7-5c1.3 0 2.5.4 3.4 1M15 8s-2.6 5-7 5c-1.3 0-2.5-.4-3.4-1" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>';
     eye.onclick = ev=>{ ev.stopPropagation(); L.visible=!L.visible; composeSheet(); renderLayers(); commit(); };
     const th = document.createElement('div'); th.className='thumb'; th.style.backgroundImage = `url(${thumbOf(L)})`;
-    const nm = document.createElement('div'); nm.className='nm'; nm.textContent = layerName(L); const sm = document.createElement('small'); sm.textContent = `${L.kind}${L.inside?' · inside':''} · ${layerPiece(L)}`; nm.appendChild(sm);
+    const nm = document.createElement('div'); nm.className='nm'; nm.textContent = layerName(L); const sm = document.createElement('small'); sm.textContent = `${L.kind}${L.inside?' · inside':''}${L.locked?' · locked':''} · ${layerPiece(L)}`; nm.appendChild(sm);
     const del = document.createElement('button'); del.className='icon'; del.title='Delete layer'; del.setAttribute('aria-label','Delete layer');
     del.innerHTML = '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M3 4h10M6.5 4V2.5h3V4M4.5 4l.7 9.5h5.6l.7-9.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>';
-    del.onclick = ev=>{ ev.stopPropagation(); S.layers = S.layers.filter(l=>l!==L); if(S.sel===L.id) S.sel = S.layers.at(-1)?.id ?? null; composeSheet(); renderLayers(); commit(); };
+    del.onclick = ev=>{ ev.stopPropagation(); if(L.locked){ toast('Unlock the layer first'); return; } S.layers = S.layers.filter(l=>l!==L); if(S.sel===L.id) S.sel = S.layers.at(-1)?.id ?? null; composeSheet(); renderLayers(); commit(); };
     row.append(eye, th, nm, del); row.onclick = ()=>select(L.id); row.onkeydown = ev=>{ if(ev.key==='Enter') select(L.id); };
     box.appendChild(row);
   });
@@ -741,27 +909,50 @@ function renderLayers(){
   syncLayerUI();
 }
 function syncLayerUI(){
-  const L = cur(); $('layerEdit').hidden = !L; if(!L) return;
-  $('textEdit').hidden = L.kind!=='text';
-  if (L.kind==='text'){ if (document.activeElement!==$('textVal')) $('textVal').value = L.text.replace(/\n/g,' / '); $('textFont').value = L.font; $('textColor').value = L.color; }
+  const L = cur(); $('layerEdit').hidden = !L; $('layerTools').hidden = !L; if(!L) return;
+  $('textEdit').hidden = L.kind!=='text'; $('imgEdit').hidden = L.kind!=='image';
+  if (L.kind==='text'){ if (document.activeElement!==$('textVal')) $('textVal').value = L.text.replace(/\n/g,' / '); $('textFont').value = L.font; $('textFont').style.fontFamily = `"${L.font}", sans-serif`; $('textColor').value = L.color; }
   $('lw').value = (L.w/PX).toFixed(1); $('lwo').textContent = `${(L.w/PX).toFixed(1)} cm`;
-  $('lr').value = L.rot; $('lro').textContent = `${Math.round(L.rot)}°`; $('lInside').checked = !!L.inside;
+  $('lr').value = L.rot; $('lro').textContent = `${Math.round(L.rot)}°`;
+  $('lop').value = Math.round((L.opacity??1)*100); $('lopO').textContent = `${Math.round((L.opacity??1)*100)}%`;
+  $('lInside').checked = !!L.inside;
+  $('lockLayer').textContent = L.locked ? 'Unlock' : 'Lock';
 }
-$('textVal').oninput = e=>{ const L=cur(); if(!L) return; L.text = e.target.value.replace(/\s*\/\s*/g,'\n') || ' '; textBitmap(L); composeSheet(); renderLayers(); };
+$('textVal').oninput = e=>{ const L=cur(); if(!L||L.locked) return; L.text = e.target.value.replace(/\s*\/\s*/g,'\n') || ' '; textBitmap(L); composeSheet(); renderLayers(); };
 $('textVal').onchange = commit;
-$('textFont').onchange = async e=>{ const L=cur(); L.font = e.target.value; await document.fonts.load(`220px "${L.font}"`); textBitmap(L); composeSheet(); renderLayers(); commit(); };
-$('textColor').oninput = e=>{ const L=cur(); L.color = e.target.value; textBitmap(L); composeSheet(); }; $('textColor').onchange = ()=>{ renderLayers(); commit(); };
-$('lw').oninput = e=>{ const L=cur(); L.w = +e.target.value*PX; composeSheet(); syncLayerUI(); }; $('lw').onchange = commit;
-$('lr').oninput = e=>{ const L=cur(); L.rot = +e.target.value; composeSheet(); syncLayerUI(); }; $('lr').onchange = commit;
-$('lInside').onchange = e=>{ const L=cur(); L.inside = e.target.checked; select(L.id); composeSheet(); renderLayers(); commit(); };
-$('addText').onclick = ()=>{ const f = pieceById.front.box; const L = addText('YOUR TEXT', (f[0]+f[2])/2, f[1]+24*PX, 20); select(L.id); composeSheet(); commit(); };
-$('addImage').onclick = ()=> $('file').click();
-function placeImageFile(file){ if(!file || !file.type.startsWith('image/')) return; const img = new Image();
-  img.onload = ()=>{ const f = pieceById.front.box; const L = addImage(img, (file.name||'Pasted image').replace(/\.[^.]+$/,''), (f[0]+f[2])/2, f[1]+28*PX, 24); select(L.id); composeSheet(); commit(); };
+$('textFont').onchange = async e=>{ const L=cur(); if(!L||L.locked) return; L.font = e.target.value; $('textFont').style.fontFamily = `"${L.font}", sans-serif`; await ensureFont(L.font); textBitmap(L); composeSheet(); renderLayers(); commit(); };
+$('textColor').oninput = e=>{ const L=cur(); if(!L||L.locked) return; L.color = e.target.value; textBitmap(L); composeSheet(); }; $('textColor').onchange = ()=>{ renderLayers(); commit(); };
+$('lw').oninput = e=>{ const L=cur(); if(!L||L.locked) return; L.w = +e.target.value*PX; composeSheet(); syncLayerUI(); }; $('lw').onchange = commit;
+$('lr').oninput = e=>{ const L=cur(); if(!L||L.locked) return; L.rot = +e.target.value; composeSheet(); syncLayerUI(); }; $('lr').onchange = commit;
+$('lop').oninput = e=>{ const L=cur(); if(!L||L.locked) return; L.opacity = +e.target.value/100; composeSheet(); syncLayerUI(); }; $('lop').onchange = commit;
+$('lInside').onchange = e=>{ const L=cur(); if(!L||L.locked) return; L.inside = e.target.checked; select(L.id); composeSheet(); renderLayers(); commit(); };
+$('flipH').onclick = ()=>{ const L=cur(); if(!L||L.locked) return; L.flipX = !L.flipX; composeSheet(); renderLayers(); commit(); };
+$('flipV').onclick = ()=>{ const L=cur(); if(!L||L.locked) return; L.flipY = !L.flipY; composeSheet(); renderLayers(); commit(); };
+$('dupLayer').onclick = ()=>{ const L=cur(); if(!L) return; const N = cloneLayer(L); select(N.id); if(N.kind==='text') rebuildText(N).then(()=>{composeSheet();renderLayers();commit();}); composeSheet(); renderLayers(); commit(); };
+$('lockLayer').onclick = ()=>{ const L=cur(); if(!L) return; L.locked = !L.locked; renderLayers(); drawPattern(); commit(); };
+$('layerUp').onclick = ()=>{ const L=cur(); if(!L) return; const i=S.layers.indexOf(L); if(i<S.layers.length-1){ S.layers.splice(i,1); S.layers.splice(i+1,0,L); composeSheet(); renderLayers(); commit(); } };
+$('layerDown').onclick = ()=>{ const L=cur(); if(!L) return; const i=S.layers.indexOf(L); if(i>0){ S.layers.splice(i,1); S.layers.splice(i-1,0,L); composeSheet(); renderLayers(); commit(); } };
+$('addText').onclick = ()=>{ const f = pieceById.front.box; const L = addText('YOUR TEXT', (f[0]+f[2])/2, f[1]+24*PX, 20); select(L.id);
+  rebuildText(L).then(()=>{ composeSheet(); renderLayers(); commit(); }); composeSheet(); commit(); };
+$('addImage').onclick = ()=>{ pendingPlace = null; $('file').click(); };
+function placeImageFile(file, at=null){ if(!file || !file.type.startsWith('image/')) return; const img = new Image();
+  img.onload = ()=>{ const f = pieceById.front.box;
+    const x = at?.x ?? pendingPlace?.sx ?? (f[0]+f[2])/2;
+    const y = at?.y ?? pendingPlace?.sy ?? (f[1]+28*PX);
+    pendingPlace = null;
+    const L = addImage(img, (file.name||'Pasted image').replace(/\.[^.]+$/,''), x, y, 24); select(L.id); composeSheet(); commit(); };
   img.src = URL.createObjectURL(file); }
-$('file').onchange = e=>{ placeImageFile(e.target.files[0]); e.target.value=''; };
+let skipFileAuto = false;
+$('file').onchange = e=>{ const f=e.target.files[0]; if (skipFileAuto){ skipFileAuto=false; e.target.value=''; return; } placeImageFile(f); e.target.value=''; };
 addEventListener('paste', e=>{ const f = [...(e.clipboardData?.files||[])].find(f=>f.type.startsWith('image/')); if (f){ e.preventDefault(); placeImageFile(f); } });
-['dragover','drop'].forEach(t=>pane.parentElement.addEventListener(t, e=>{ e.preventDefault(); if(t==='drop') placeImageFile(e.dataTransfer.files[0]); }));
+['dragover','drop'].forEach(t=>{
+  pane.parentElement.addEventListener(t, e=>{ e.preventDefault(); if(t==='drop') placeImageFile(e.dataTransfer.files[0]); });
+  $('patternPane').addEventListener(t, e=>{ e.preventDefault(); if(t==='drop'){
+    const r = pc.getBoundingClientRect(), [dx,dy]=toSheet(e.clientX-r.left, e.clientY-r.top);
+    const hit = fromDisplay(dx,dy);
+    placeImageFile(e.dataTransfer.files[0], hit ? {x:hit.sx, y:hit.sy} : null);
+  }});
+});
 
 function swatches(el, list, getter, setter){ const draw = ()=>{ el.innerHTML='';
   list.forEach(([name,hex])=>{ const b=document.createElement('button'); b.className='sw'; b.style.background=hex; b.title=name; b.setAttribute('aria-label',name);
@@ -821,6 +1012,51 @@ $('vPattern').onclick=()=>setView('pattern'); $('vSplit').onclick=()=>setView('s
 function syncAllUI(){ $('fabricSw')._draw(); $('ribSw')._draw(); $('bgSw')._draw(); $('ribMatch').checked = S.ribMatch; $('ribSw').hidden = S.ribMatch;
   segSet('cSolid','cGrad',!S.grad); $('gradRow').hidden = !S.grad; $('grad2').value = S.grad2; $('wash').value = S.wash; $('washOpts').hidden = S.wash==='none';
   setFabric(S.fabric); setBg(S.bg); }
+
+// ---------- save / load (localStorage) + pattern PNG ----------
+const STORE_KEY = 'fashion-builder-design-v1';
+async function serializeDesign(){
+  const layers = [];
+  for (const L of S.layers){
+    const base = {id:L.id, kind:L.kind, x:L.x, y:L.y, w:L.w, rot:L.rot, opacity:L.opacity??1, flipX:!!L.flipX, flipY:!!L.flipY, locked:!!L.locked, visible:!!L.visible, inside:!!L.inside};
+    if (L.kind==='text'){ layers.push({...base, text:L.text, font:L.font, color:L.color}); }
+    else {
+      let dataUrl = null;
+      try {
+        if (L.src && L.src.toDataURL) dataUrl = L.src.toDataURL('image/png');
+        else if (L.src && L.src.src) dataUrl = L.src.src;
+      } catch(_){}
+      layers.push({...base, name:L.name, dataUrl});
+    }
+  }
+  return {version:1, fabric:S.fabric, grad:S.grad, grad2:S.grad2, rib:S.rib, ribMatch:S.ribMatch, wash:S.wash, washStr:S.washStr, washSize:S.washSize, washPrints:S.washPrints, washSeed:S.washSeed, bg:S.bg, layers, sel:S.sel, uid};
+}
+async function applyDesign(data){
+  if (!data || !data.layers) return;
+  Object.assign(S, {fabric:data.fabric, grad:!!data.grad, grad2:data.grad2, rib:data.rib, ribMatch:data.ribMatch!==false, wash:data.wash||'none', washStr:data.washStr??0.6, washSize:data.washSize??1.4, washPrints:data.washPrints!==false, washSeed:data.washSeed??3, bg:data.bg||S.bg, sel:data.sel??null});
+  uid = Math.max(uid, data.uid||0, ...data.layers.map(l=>l.id||0));
+  const next = [];
+  for (const raw of data.layers){
+    if (raw.kind==='text'){
+      const L = {id:raw.id||++uid, kind:'text', text:raw.text||' ', font:raw.font||'Anton', color:raw.color||'#1b1b1b', x:raw.x, y:raw.y, w:raw.w, rot:raw.rot||0, opacity:raw.opacity??1, flipX:!!raw.flipX, flipY:!!raw.flipY, locked:!!raw.locked, visible:raw.visible!==false, inside:!!raw.inside};
+      await ensureFont(L.font); textBitmap(L); next.push(L);
+    } else if (raw.dataUrl){
+      const img = await new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=raw.dataUrl; });
+      next.push({id:raw.id||++uid, kind:'image', name:raw.name||'Image', src:img, aspect:img.height/img.width, x:raw.x, y:raw.y, w:raw.w, rot:raw.rot||0, opacity:raw.opacity??1, flipX:!!raw.flipX, flipY:!!raw.flipY, locked:!!raw.locked, visible:raw.visible!==false, inside:!!raw.inside});
+    }
+  }
+  S.layers = next; syncAllUI(); composeSheet(); renderLayers(); commit(); toast('Design loaded');
+}
+$('saveDesign').onclick = async ()=>{ try { localStorage.setItem(STORE_KEY, JSON.stringify(await serializeDesign())); toast('Saved in this browser'); } catch(err){ toast('Could not save: '+err.message); } };
+$('loadDesign').onclick = async ()=>{ const raw = localStorage.getItem(STORE_KEY); if(!raw){ toast('No saved design yet'); return; } try { await applyDesign(JSON.parse(raw)); } catch(err){ toast('Could not load: '+err.message); } };
+$('exportPattern').onclick = async ()=>{
+  const B = SHOWN.map(dispBox); const minX=Math.min(...B.map(b=>b[0])), minY=Math.min(...B.map(b=>b[1])), maxX=Math.max(...B.map(b=>b[2])), maxY=Math.max(...B.map(b=>b[3]));
+  const pad=40; const c=document.createElement('canvas'); c.width=Math.ceil(maxX-minX+pad*2); c.height=Math.ceil(maxY-minY+pad*2+36);
+  const g=c.getContext('2d'); g.fillStyle='#10120f'; g.fillRect(0,0,c.width,c.height); g.translate(pad-minX, pad-minY);
+  for (const p of SHOWN){ g.save(); g.translate(p.dx,p.dy); g.save(); g.clip(p.path); g.drawImage(tex,0,0); g.restore();
+    g.strokeStyle='rgba(255,255,255,.25)'; g.lineWidth=1; g.stroke(p.path); g.restore(); }
+  const blob = await canvasBlob(c); showModal({img:URL.createObjectURL(blob), blob, name:'pattern-sheet.png', txt:'2D sewing-pattern sheet with your prints.'});
+};
 
 // ---------- exports ----------
 const download = (blob, name) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); };
@@ -884,10 +1120,15 @@ $('snap').onclick = async ()=>{ render(); const blob = await canvasBlob(glc); sh
 // ---------- boot with a sample design ----------
 $('pcCount').textContent = `${mainPieces().length} pieces`; $('garmentName').textContent = USER ? `Raglan tee · ${mainPieces().length} pieces` : 'Oversized tee · 5 pieces';
 new ResizeObserver(()=>{ resizeGL(); resizePattern(); }).observe($('stage'));
-await Promise.race([Promise.all(['Anton','Permanent Marker','Archivo Black','DM Serif Display','Familjen Grotesk'].map(f=>document.fonts.load(`220px "${f}"`))), new Promise(r=>setTimeout(r,2500))]);
+const FONT_LIST = [...$('textFont').options].map(o=>o.value);
+for (const o of $('textFont').options) o.style.fontFamily = `"${o.value}", sans-serif`;
+await Promise.race([Promise.all(FONT_LIST.slice(0,8).map(f=>ensureFont(f))), new Promise(r=>setTimeout(r,2500))]);
+// lazy-load the rest in background
+FONT_LIST.slice(8).forEach(f=>ensureFont(f));
 {
   const f = pieceById.front.box, b = pieceById.back.box, sl = pieceById.sleeveL.box;
   const fx = (f[0]+f[2])/2, bx = (b[0]+b[2])/2;
+  await ensureFont('Permanent Marker'); await ensureFont('Archivo Black');
   addText('BUILT.\nNOT\nGENERATED.', fx, f[1]+27*PX, 25, {font:'Permanent Marker', color:'#efece3', rot:-4});
   addText('FB', (sl[0]+sl[2])/2+4*PX, sl[1]+14*PX, 4.5, {font:'Archivo Black', color:'#efece3', rot:0});
   addText('FASHION BUILDER\nL  ·  100% COTTON', bx, b[1]+6.5*PX, 9, {font:'Archivo Black', color:'#1b1b1b', inside:true});
