@@ -6,7 +6,7 @@ A garment editor in the browser: a sewing-pattern sheet and a live 3D shirt side
 
 ## Features
 - **Views:** Sewing pattern · Split · 3D, outside / inside pattern sides, front / back / side cameras, auto-rotate
-- **Design:** image and text layers, inside prints (neck label), solid or gradient fabric colour, rib colour, washes (acid, caustic, vintage, tie-dye)
+- **Design:** image and text layers on the **2D pattern map** (and 3D), click-to-place, opacity, flip, rotate handle, lock/duplicate/reorder, 35 fonts (incl. Hebrew), inside prints (neck label), solid or gradient fabric colour, rib colour, washes (acid, caustic, vintage, tie-dye), save/load in browser, pattern-sheet PNG export
 - **Appearance:** material presets (cotton, heavyweight, fleece, piqué, poly), fold shadows (GTAO), wrinkles, knit texture, knit size, brightness, contrast
 - **Scene:** studio environment light, key light angle, backdrop colours, projected backdrop light (leaf, palm, blinds, window), hanger colours
 - **Export:** catalogue render, print files (ZIP), sublimation panels with 1 cm bleed (ZIP), spec sheet, 360° turntable video
