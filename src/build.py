@@ -27,13 +27,15 @@ s = s.replace('__SCRIPT__', '<script type="module">\n' + bundled + '\n</script>'
 glb = base64.b64encode(open(os.path.join(R, 'assets/shirt.glb'), 'rb').read()).decode()
 three = base64.b64encode(open(os.path.join(R, 'assets/vendor/three.fb.min.js'), 'rb').read()).decode()
 art = s.replace('"./assets/vendor/three.fb.min.js"', '"data:text/javascript;base64,' + three + '"')
+logo = base64.b64encode(open(os.path.join(R, 'assets/logo-dark.png'), 'rb').read()).decode()
+art = art.replace('./assets/logo-dark.png', 'data:image/png;base64,' + logo)
 art = art.replace('<link rel="modulepreload" href="./assets/vendor/three.fb.min.js">\n', '')
 art = art.replace("'assets/vendor/jszip.min.js'", "'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'")
 open(os.path.join(H, 'index.artifact.html'), 'w').write(
     art.replace('<script type="module">', '<script>window.__GLB_B64="' + glb + '";</script>\n<script type="module">', 1)
 )
 open(os.path.join(R, 'index.html'), 'w').write(
-    '<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">\n'
+    '<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">\n<link rel="icon" type="image/png" href="./assets/favicon.png">\n'
     + s.replace('<div class="app">', '</head><body>\n<div class="app">', 1)
     + '\n</body></html>\n'
 )

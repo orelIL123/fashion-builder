@@ -326,6 +326,8 @@ $('redo').onclick = ()=>{ if(!fut.length) return; const s = fut.pop(); hist.push
 addEventListener('keydown', e=>{ if(e.target.matches('input[type=text],textarea')) return;
   if((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==='z'){ e.preventDefault(); (e.shiftKey?$('redo'):$('undo')).click(); }
   if((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==='d' && cur() && !e.target.matches('input,select')){ e.preventDefault(); $('dupLayer').click(); }
+  if (!e.target.matches('input,select,textarea') && !e.metaKey && !e.ctrlKey && !e.altKey && (e.key==='l'||e.key==='L')){ e.preventDefault(); if (e.shiftKey) setLayersPop($('layersPop').hidden); else toggleLock(cur()); return; }
+  if (e.key==='Escape' && $('layersPop') && !$('layersPop').hidden) setLayersPop(false);
   if((e.key==='Delete'||e.key==='Backspace') && cur() && !cur().locked && !e.target.matches('input,select')){ S.layers = S.layers.filter(l=>l!==cur()); S.sel = S.layers.at(-1)?.id ?? null; composeSheet(); renderLayers(); commit(); }
   if (cur() && !cur().locked && !e.target.matches('input,select') && ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){
     e.preventDefault(); const step = (e.shiftKey?5:1)*PX; const L=cur();
@@ -849,7 +851,7 @@ glc.addEventListener('pointerdown', e=>{
   gdrag = {mode:'move', L, dx:uv[0]-L.x, dy:uv[1]-L.y}; controls.enabled = false; glc.setPointerCapture(e.pointerId);
 }, true);
 glc.addEventListener('pointermove', e=>{
-  if(!gdrag){ if (e.buttons) return; const now = performance.now(); if (now-lastHover < 40) return; lastHover = now; const uv=hitUV(e); glc.style.cursor = BRUSH.on ? (uv?'crosshair':'grab') : (uv && hitLayer(...uv,false) ? 'move' : 'grab'); return; }
+  if(!gdrag){ if (e.buttons) return; const now = performance.now(); if (now-lastHover < 40) return; lastHover = now; const uv=hitUV(e); const hl = !BRUSH.on && uv ? hitLayer(...uv,false) : null; glc.style.cursor = BRUSH.on ? (uv?'crosshair':'grab') : (hl ? (hl.locked ? 'not-allowed' : 'move') : 'grab'); return; }
   const uv = hitUV(e); if(!uv) return;
   if (gdrag.mode==='brush'){ const p = pieceAt(uv[0],uv[1]); // a seam is a jump on the print sheet — never interpolate across it
     if (p === gdrag.piece && Math.hypot(uv[0]-gdrag.last[0], uv[1]-gdrag.last[1]) < 12*PX) strokeBrush(gdrag.L, gdrag.last[0], gdrag.last[1], uv[0], uv[1], p); else stampBrush(gdrag.L, uv[0], uv[1], p);
@@ -906,27 +908,37 @@ const thumbOf = L => {
   try { const w = src.naturalWidth || src.width, h = src.naturalHeight || src.height; if (w && h){ const k = Math.min(64/w, 64/h); g.drawImage(src, (72-w*k)/2, (72-h*k)/2, w*k, h*k); } return L.thumb = t.toDataURL(); }
   catch(_){ return src.src || ''; }
 };
+const LOCK_SVG = '<svg width="15" height="15" viewBox="0 0 16 16"><rect x="3.2" y="7" width="9.6" height="6.8" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5.2 7V5.2a2.8 2.8 0 0 1 5.6 0V7" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>';
+const UNLOCK_SVG = '<svg width="15" height="15" viewBox="0 0 16 16"><rect x="3.2" y="7" width="9.6" height="6.8" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5.2 7V5.2a2.8 2.8 0 0 1 5.4-1" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>';
+function toggleLock(L){ if (!L) { toast('Select a layer first'); return; } L.locked = !L.locked; if (L.locked){ pdrag = null; } toast(L.locked ? 'Locked — it will not move in 2D or 3D' : 'Unlocked'); renderLayers(); drawPattern(); commit(); }
+function buildLayerRow(L){
+  const row = document.createElement('div'); row.className='layer'; row.setAttribute('aria-selected', L.id===S.sel); row.tabIndex = 0;
+  const eye = document.createElement('button'); eye.className='icon'; eye.title = L.visible?'Hide':'Show'; eye.setAttribute('aria-label', eye.title);
+  eye.innerHTML = L.visible ? '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M1 8s2.6-5 7-5 7 5 7 5-2.6 5-7 5-7-5-7-5Z" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="2.2" fill="currentColor"/></svg>' : '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M2 2l12 12M1 8s2.6-5 7-5c1.3 0 2.5.4 3.4 1M15 8s-2.6 5-7 5c-1.3 0-2.5-.4-3.4-1" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>';
+  eye.onclick = ev=>{ ev.stopPropagation(); L.visible=!L.visible; composeSheet(); renderLayers(); commit(); };
+  const lk = document.createElement('button'); lk.className = 'icon' + (L.locked ? ' on' : ''); lk.title = L.locked ? 'Unlock layer' : 'Lock layer (cannot move in 2D / 3D)'; lk.setAttribute('aria-label', lk.title); lk.setAttribute('aria-pressed', !!L.locked); lk.innerHTML = L.locked ? LOCK_SVG : UNLOCK_SVG;
+  lk.onclick = ev=>{ ev.stopPropagation(); toggleLock(L); };
+  const th = document.createElement('div'); th.className='thumb'; th.style.backgroundImage = `url(${thumbOf(L)})`;
+  const nm = document.createElement('div'); nm.className='nm'; nm.textContent = layerName(L); const sm = document.createElement('small'); sm.textContent = `${L.kind}${L.inside?' · inside':''}${L.locked?' · locked':''} · ${layerPiece(L)}`; nm.appendChild(sm);
+  const del = document.createElement('button'); del.className='icon'; del.title='Delete layer'; del.setAttribute('aria-label','Delete layer');
+  del.innerHTML = '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M3 4h10M6.5 4V2.5h3V4M4.5 4l.7 9.5h5.6l.7-9.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>';
+  del.onclick = ev=>{ ev.stopPropagation(); if(L.locked){ toast('Unlock the layer first'); return; } S.layers = S.layers.filter(l=>l!==L); if(S.sel===L.id) S.sel = S.layers.at(-1)?.id ?? null; composeSheet(); renderLayers(); commit(); };
+  row.append(eye, lk, th, nm, del); row.onclick = ()=>select(L.id); row.onkeydown = ev=>{ if(ev.key==='Enter') select(L.id); };
+  return row;
+}
 function renderLayers(){
-  const box = $('layers'); box.innerHTML = '';
-  if (!S.layers.length){ box.innerHTML = '<p class="sub" style="margin:0">Nothing here yet. Add an image or text above.</p>'; }
-  [...S.layers].reverse().forEach(L=>{
-    const row = document.createElement('div'); row.className='layer'; row.setAttribute('aria-selected', L.id===S.sel); row.tabIndex = 0;
-    const eye = document.createElement('button'); eye.className='icon'; eye.title = L.visible?'Hide':'Show'; eye.setAttribute('aria-label', eye.title);
-    eye.innerHTML = L.visible ? '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M1 8s2.6-5 7-5 7 5 7 5-2.6 5-7 5-7-5-7-5Z" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="2.2" fill="currentColor"/></svg>' : '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M2 2l12 12M1 8s2.6-5 7-5c1.3 0 2.5.4 3.4 1M15 8s-2.6 5-7 5c-1.3 0-2.5-.4-3.4-1" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>';
-    eye.onclick = ev=>{ ev.stopPropagation(); L.visible=!L.visible; composeSheet(); renderLayers(); commit(); };
-    const th = document.createElement('div'); th.className='thumb'; th.style.backgroundImage = `url(${thumbOf(L)})`;
-    const nm = document.createElement('div'); nm.className='nm'; nm.textContent = layerName(L); const sm = document.createElement('small'); sm.textContent = `${L.kind}${L.inside?' · inside':''}${L.locked?' · locked':''} · ${layerPiece(L)}`; nm.appendChild(sm);
-    const del = document.createElement('button'); del.className='icon'; del.title='Delete layer'; del.setAttribute('aria-label','Delete layer');
-    del.innerHTML = '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M3 4h10M6.5 4V2.5h3V4M4.5 4l.7 9.5h5.6l.7-9.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>';
-    del.onclick = ev=>{ ev.stopPropagation(); if(L.locked){ toast('Unlock the layer first'); return; } S.layers = S.layers.filter(l=>l!==L); if(S.sel===L.id) S.sel = S.layers.at(-1)?.id ?? null; composeSheet(); renderLayers(); commit(); };
-    row.append(eye, th, nm, del); row.onclick = ()=>select(L.id); row.onkeydown = ev=>{ if(ev.key==='Enter') select(L.id); };
-    box.appendChild(row);
-  });
-  $('layerCount').textContent = S.layers.length ? `${S.layers.length}` : '';
+  for (const box of [$('layers'), $('layersPopList')]){
+    if (!box) continue; box.innerHTML = '';
+    if (!S.layers.length){ box.innerHTML = '<p class="sub" style="margin:0">Nothing here yet. Add an image or text above.</p>'; }
+    [...S.layers].reverse().forEach(L=> box.appendChild(buildLayerRow(L)));
+  }
+  const n = S.layers.length ? `${S.layers.length}` : '';
+  $('layerCount').textContent = n; if ($('layerCountPop')) $('layerCountPop').textContent = n;
   syncLayerUI();
 }
+function setLayersPop(on){ const p = $('layersPop'); if (!p) return; p.hidden = !on; for (const id of ['railLayers','layers3d']) if ($(id)) $(id).setAttribute('aria-pressed', on); }
 function syncLayerUI(){
-  const L = cur(); $('layerEdit').hidden = !L; $('layerTools').hidden = !L; if(!L) return;
+  const L = cur(); { const on = !!(L && L.locked); for (const id of ['railLock','lock3d']){ const b = $(id); if (!b) continue; b.setAttribute('aria-pressed', on); b.classList.toggle('on', on); b.disabled = !L; b.style.opacity = L ? '' : '.45'; } if ($('lock3dT')) $('lock3dT').textContent = on ? 'Unlock' : 'Lock'; } $('layerEdit').hidden = !L; $('layerTools').hidden = !L; if(!L) return;
   $('textEdit').hidden = L.kind!=='text'; $('imgEdit').hidden = L.kind!=='image';
   if (L.kind==='image'){ $('bgRestore').hidden = !L.orig; $('bgTolRow').hidden = !L.orig; $('bgRemove').textContent = L.orig ? 'Background removed ✓' : 'Remove background'; $('bgRemove').disabled = !!L.orig; if (L.orig && L.bgTol){ $('bgTol').value = L.bgTol; $('bgTolO').textContent = L.bgTol; } }
   const isBrush = L.kind==='brush';
@@ -998,7 +1010,10 @@ $('bgTol').onchange = ()=>{ const L = cur(); if (L && L.orig) applyBgRemoval(); 
 $('bgRestore').onclick = ()=>{ const L = cur(); if (!L || !L.orig || L.locked) return; L.src = L.orig; L.orig = null; L.rev = (L.rev|0)+1; L.thumb = null; composeSheet(); renderLayers(); commit(); };
 $('flipV').onclick = ()=>{ const L=cur(); if(!L||L.locked) return; L.flipY = !L.flipY; composeSheet(); renderLayers(); commit(); };
 $('dupLayer').onclick = ()=>{ const L=cur(); if(!L) return; if(!ensureLayerRoom()) return; const N = cloneLayer(L); select(N.id); if(N.kind==='text') rebuildText(N).then(()=>{composeSheet();renderLayers();commit();}); composeSheet(); renderLayers(); commit(); };
-$('lockLayer').onclick = ()=>{ const L=cur(); if(!L) return; L.locked = !L.locked; renderLayers(); drawPattern(); commit(); };
+$('lockLayer').onclick = ()=> toggleLock(cur());
+for (const id of ['railLock','lock3d']) if ($(id)) $(id).onclick = ()=> toggleLock(cur());
+for (const id of ['railLayers','layers3d']) if ($(id)) $(id).onclick = ()=> setLayersPop($('layersPop').hidden);
+if ($('layersPopClose')) $('layersPopClose').onclick = ()=> setLayersPop(false);
 $('layerUp').onclick = ()=>{ const L=cur(); if(!L) return; const i=S.layers.indexOf(L); if(i<S.layers.length-1){ S.layers.splice(i,1); S.layers.splice(i+1,0,L); composeSheet(); renderLayers(); commit(); } };
 $('layerDown').onclick = ()=>{ const L=cur(); if(!L) return; const i=S.layers.indexOf(L); if(i>0){ S.layers.splice(i,1); S.layers.splice(i-1,0,L); composeSheet(); renderLayers(); commit(); } };
 $('addText').onclick = ()=>{ if(!ensureLayerRoom()) return; setBrushMode(false); const f = pieceById.front.box; const L = addText('YOUR TEXT', (f[0]+f[2])/2, f[1]+24*PX, 20); select(L.id);
