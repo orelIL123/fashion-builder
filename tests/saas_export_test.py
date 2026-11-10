@@ -26,43 +26,24 @@ def main():
 
         page.goto(BASE + '/?t=' + str(int(time.time()*1000)), wait_until='networkidle', timeout=120000)
         html = page.content()
-        assert_('FB-BRUSH-V1' in html, 'missing FB-BRUSH-V1 marker')
+        assert_('FB-INVITE-V1' in html, 'missing FB-INVITE-V1 marker')
 
-        if page.locator('#landing').is_visible():
-            page.click('#landingOpen')
         page.wait_for_selector('#loading', state='hidden', timeout=120000)
-        page.wait_for_timeout(1500)
+        page.wait_for_function('() => window.__FB && window.__FB.grantLocalTestAccess', timeout=30000)
+        page.evaluate('() => window.__FB.grantLocalTestAccess()')
+        page.wait_for_selector('#landing', state='hidden', timeout=10000)
+        page.wait_for_timeout(400)
 
         badge = page.locator('#planBadge').inner_text().strip()
-        assert_('free' in badge.lower(), f'expected Free badge, got {badge}')
+        assert_('invited' in badge.lower(), f'expected Invited badge, got {badge}')
+        email = 'local-test@example.com'
 
-        # Sign up
-        page.click('#accountBtn')
-        page.click('#accSignIn')
-        page.click('#authTabUp')
-        email = f'demo_{int(time.time())}@example.com'
-        page.fill('#authName', 'Demo User')
-        page.fill('#authEmail', email)
-        page.fill('#authPass', 'secret12')
-        page.click('#authSubmit')
-        page.wait_for_selector('#authModal', state='hidden', timeout=10000)
-        page.wait_for_timeout(500)
-
-        # Free: video gated
-        page.click('#exportBtn')
-        page.click('[data-exp="turntable"]')
-        page.wait_for_selector('#pricingModal:not([hidden])', timeout=8000)
-        page.click('#pricingClose')
-
-        # Free layer cap
+        # Invited users can add layers (no cap) and should not see pricing
         page.click('#addText')
         page.wait_for_timeout(600)
         layer_count = page.locator('#layers .layer').count()
-        assert_(layer_count <= 3, f'Free should not exceed 3 layers, got {layer_count}')
-        # layer cap opens pricing — close it
-        if page.locator('#pricingModal').is_visible():
-            page.click('#pricingClose')
-            page.wait_for_selector('#pricingModal', state='hidden', timeout=5000)
+        assert_(layer_count >= 4, f'invited should allow 4+ layers, got {layer_count}')
+        assert_(page.locator('#pricingModal').is_hidden() or not page.locator('#pricingModal').is_visible(), 'pricing should stay hidden')
 
         # Pattern PNG via modal blob
         page.click('#exportBtn')
@@ -106,20 +87,9 @@ def main():
         assert_(len(cat_buf) > 2000, 'catalogue png too small')
         page.click('#modalClose')
 
-        # Redeem Pro
-        page.click('#upgradeBtn')
-        page.fill('#redeemCode', 'PRO40')
-        page.click('#redeemBtn')
-        page.wait_for_timeout(800)
-        if page.locator('#pricingModal').is_visible():
-            page.click('#pricingClose')
         badge2 = page.locator('#planBadge').inner_text().strip()
-        assert_('pro' in badge2.lower(), f'expected Pro badge after redeem, got {badge2}')
-
-        page.click('#addText')
-        page.wait_for_timeout(800)
-        layer_count2 = page.locator('#layers .layer').count()
-        assert_(layer_count2 >= 4, f'Pro should allow 4+ layers, got {layer_count2}')
+        assert_('invited' in badge2.lower(), f'expected Invited badge, got {badge2}')
+        layer_count2 = layer_count
 
         # Turntable video download
         with page.expect_download(timeout=180000) as di:

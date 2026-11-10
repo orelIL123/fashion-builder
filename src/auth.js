@@ -1,14 +1,19 @@
-/* Fashion Builder — Auth / plan service (front-end demo).
- * Swap this module for Supabase Auth + a plans table later.
- * NOT secure server auth — passwords never leave this browser, hashed with SHA-256+salt for demo only.
+/* Fashion Builder — invite-only access (Supabase) + plan helpers.
+ * Approval is stored server-side. The client caches only the email and re-checks status on load.
+ * Pricing UI is hidden for now (PAYMENTS_VISIBLE=false); plan limits stay so a paid plan can return later.
  */
 const AuthService = (() => {
-  const USERS_KEY = 'fb-saas-users-v1';
-  const SESSION_KEY = 'fb-saas-session-v1';
+  const SUPABASE_URL = 'https://ilekmrkcsopsxckxefns.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlsZWttcmtjc29wc3hja3hlZm5zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwMjQyMzMsImV4cCI6MjEwMTYwMDIzM30.jga5TlzxyEFzgV6bsaSdzW_mQOtFo_i7-7dSd4gzvdU';
+  const FN_BASE = SUPABASE_URL + '/functions/v1';
+  const SESSION_KEY = 'fb-invite-session-v1';
   const DESIGNS_KEY = 'fb-saas-designs-v1';
   const LEGACY_DESIGN_KEY = 'fashion-builder-design-v1';
 
-  /** Client-side demo codes that unlock Pro. Replace with server redeem later. */
+  /** Paid plan UI is hidden while access is invite-only. Planned later: ~₪30/mo. */
+  const PAYMENTS_VISIBLE = false;
+
+  /** Kept for when pricing returns. */
   const ACCESS_CODES = {
     PRO40: 'pro',
     FRIENDS: 'pro',
@@ -29,8 +34,8 @@ const AuthService = (() => {
     },
     pro: {
       id: 'pro',
-      name: 'Pro',
-      priceILS: 40,
+      name: 'Invited',
+      priceILS: 30,
       maxLayers: Infinity,
       maxDesigns: 50,
       videoExport: true,
@@ -41,87 +46,111 @@ const AuthService = (() => {
   };
 
   const listeners = new Set();
-
-  function loadUsers() {
-    try { return JSON.parse(localStorage.getItem(USERS_KEY) || '{}'); } catch { return {}; }
-  }
-  function saveUsers(u) { localStorage.setItem(USERS_KEY, JSON.stringify(u)); }
+  let session = loadSession(); // { email, name, status }
+  let verified = false; // true only after a successful server status check this page load
 
   function loadSession() {
     try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch { return null; }
   }
   function saveSession(s) {
+    session = s;
     if (s) localStorage.setItem(SESSION_KEY, JSON.stringify(s));
     else localStorage.removeItem(SESSION_KEY);
   }
 
-  function bytesToHex(buf) {
-    return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-  function randomSalt(n = 16) {
-    const a = new Uint8Array(n);
-    crypto.getRandomValues(a);
-    return bytesToHex(a);
-  }
-  async function hashPassword(password, salt) {
-    const data = new TextEncoder().encode(`${salt}:${password}`);
-    const dig = await crypto.subtle.digest('SHA-256', data);
-    return bytesToHex(dig);
-  }
-
   function notify() { const snap = getState(); listeners.forEach(fn => { try { fn(snap); } catch (_) {} }); }
 
-  function getUser() {
-    const sess = loadSession();
-    if (!sess?.email) return null;
-    const users = loadUsers();
-    const u = users[sess.email.toLowerCase()];
-    if (!u) return null;
-    return { email: u.email, name: u.name || '', plan: u.plan === 'pro' ? 'pro' : 'free', createdAt: u.createdAt };
+  function validEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   }
 
+  async function callFn(name, body, { method = 'POST' } = {}) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 20000);
+    try {
+      const res = await fetch(`${FN_BASE}/${name}`, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'apikey': SUPABASE_ANON_KEY,
+        },
+        body: method === 'GET' ? undefined : JSON.stringify(body || {}),
+        signal: ctrl.signal,
+      });
+      const text = await res.text();
+      let data = {};
+      try { data = JSON.parse(text); } catch { data = { ok: false, error: text || res.statusText }; }
+      if (!res.ok && !data.error) data.error = data.message || `Request failed (${res.status})`;
+      data._http = res.status;
+      return data;
+    } catch (e) {
+      if (e && e.name === 'AbortError') throw new Error('The server took too long. Try again.');
+      throw new Error('Could not reach the server. Check your connection and try again.');
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  function getUser() {
+    if (!session?.email) return null;
+    return { email: session.email, name: session.name || '', status: session.status || null };
+  }
+
+  function isApproved() { return verified && session?.status === 'approved'; }
+
   function getPlan() {
-    const u = getUser();
-    return PLANS[u?.plan === 'pro' ? 'pro' : 'free'];
+    return PLANS[isApproved() ? 'pro' : 'free'];
   }
 
   function getState() {
-    return { user: getUser(), plan: getPlan(), plans: PLANS, codesHint: Object.keys(ACCESS_CODES) };
+    return {
+      user: getUser(),
+      plan: getPlan(),
+      plans: PLANS,
+      paymentsVisible: PAYMENTS_VISIBLE,
+      approved: isApproved(),
+      codesHint: Object.keys(ACCESS_CODES),
+    };
   }
 
-  async function signup({ email, password, name, inviteCode }) {
+  async function requestAccess({ email, name } = {}) {
     email = String(email || '').trim().toLowerCase();
-    password = String(password || '');
     name = String(name || '').trim();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Enter a valid email');
-    if (password.length < 6) throw new Error('Password must be at least 6 characters');
-    const users = loadUsers();
-    if (users[email]) throw new Error('An account with this email already exists');
-    const salt = randomSalt();
-    const hash = await hashPassword(password, salt);
-    let plan = 'free';
-    const code = String(inviteCode || '').trim().toUpperCase();
-    if (code) {
-      if (!ACCESS_CODES[code]) throw new Error('Invalid invite / access code');
-      plan = ACCESS_CODES[code];
-    }
-    users[email] = { email, name, salt, hash, plan, createdAt: Date.now() };
-    saveUsers(users);
-    saveSession({ email });
+    if (!validEmail(email)) throw new Error('Enter a valid email / הזן אימייל תקין');
+    const data = await callFn('request-access', { email, name });
+    if (!data.ok) throw new Error(data.error || 'Could not send the request');
+    verified = true;
+    saveSession({ email, name, status: data.status || 'pending' });
     notify();
-    return getState();
+    return { ...getState(), email_sent: data.email_sent, email_detail: data.email_detail, already: data.already };
   }
 
-  async function login({ email, password }) {
+  async function checkStatus(email) {
+    email = String(email || session?.email || '').trim().toLowerCase();
+    if (!validEmail(email)) throw new Error('Enter a valid email / הזן אימייל תקין');
+    const data = await callFn('check-status', { email });
+    if (!data.ok && data.status === undefined) throw new Error(data.error || 'Could not check status');
+    return { status: data.status || 'unknown', name: data.name || '', email };
+  }
+
+  async function login({ email } = {}) {
     email = String(email || '').trim().toLowerCase();
-    password = String(password || '');
-    const users = loadUsers();
-    const u = users[email];
-    if (!u) throw new Error('No account found for that email');
-    const hash = await hashPassword(password, u.salt);
-    if (hash !== u.hash) throw new Error('Wrong password');
-    saveSession({ email });
+    const st = await checkStatus(email);
+    if (st.status === 'unknown') throw new Error('No request found for that email / לא נמצאה בקשה לאימייל הזה');
+    verified = true;
+    saveSession({ email, name: st.name || '', status: st.status });
     notify();
+    if (st.status === 'pending') {
+      const err = new Error('pending');
+      err.code = 'pending';
+      throw err;
+    }
+    if (st.status === 'rejected') {
+      const err = new Error('rejected');
+      err.code = 'rejected';
+      throw err;
+    }
     return getState();
   }
 
@@ -131,41 +160,39 @@ const AuthService = (() => {
     return getState();
   }
 
-  function redeemCode(code) {
-    const u = getUser();
-    if (!u) throw new Error('Sign in first to redeem a code');
-    code = String(code || '').trim().toUpperCase();
-    const plan = ACCESS_CODES[code];
-    if (!plan) throw new Error('Invalid access code');
-    const users = loadUsers();
-    users[u.email].plan = plan;
-    saveUsers(users);
-    notify();
+  async function refreshSession() {
+    verified = false;
+    if (!session?.email) { verified = true; return getState(); }
+    try {
+      const st = await checkStatus(session.email);
+      if (st.status === 'unknown') saveSession(null);
+      else saveSession({ email: session.email, name: st.name || session.name || '', status: st.status });
+      verified = true;
+      notify();
+    } catch (_) {
+      /* Keep the email on the gate, but do not open the editor without a fresh check. */
+    }
     return getState();
   }
 
-  /** Demo-only: set plan without payment. Real billing comes later. */
-  function setPlanDemo(planId) {
-    const u = getUser();
-    if (!u) throw new Error('Sign in first');
-    if (!PLANS[planId]) throw new Error('Unknown plan');
-    const users = loadUsers();
-    users[u.email].plan = planId;
-    saveUsers(users);
-    notify();
+  async function init() {
+    await refreshSession();
     return getState();
   }
+
+  /** Demo leftovers — kept so a paid plan can return without rewriting callers. */
+  async function signup({ email, password, name, inviteCode }) {
+    return requestAccess({ email, name });
+  }
+  async function redeemCode() { throw new Error('Access is invite-only for now'); }
+  function setPlanDemo() { throw new Error('Access is invite-only for now'); }
 
   function canUseFont(font) {
     const p = getPlan();
     if (p.allFonts) return true;
     return (p.fonts || []).includes(font);
   }
-
-  function canAddLayer(currentCount) {
-    return currentCount < getPlan().maxLayers;
-  }
-
+  function canAddLayer(currentCount) { return currentCount < getPlan().maxLayers; }
   function canExportVideo() { return !!getPlan().videoExport; }
   function needsWatermark() { return !!getPlan().watermark; }
 
@@ -175,7 +202,6 @@ const AuthService = (() => {
       return Array.isArray(all) ? all : [];
     } catch { return []; }
   }
-
   function saveNamedDesign(name, payload) {
     const plan = getPlan();
     const designs = listDesigns();
@@ -185,19 +211,17 @@ const AuthService = (() => {
       localStorage.setItem(DESIGNS_KEY, JSON.stringify([entry]));
       return entry;
     }
-    if (designs.length >= plan.maxDesigns) throw new Error(`Pro design library is full (${plan.maxDesigns})`);
+    if (designs.length >= plan.maxDesigns) throw new Error(`Design library is full (${plan.maxDesigns})`);
     designs.unshift(entry);
     localStorage.setItem(DESIGNS_KEY, JSON.stringify(designs.slice(0, plan.maxDesigns)));
     localStorage.setItem(LEGACY_DESIGN_KEY, JSON.stringify(payload));
     return entry;
   }
-
   function loadNamedDesign(id) {
     const d = listDesigns().find(x => x.id === id);
     if (!d) throw new Error('Design not found');
     return d;
   }
-
   function deleteNamedDesign(id) {
     const next = listDesigns().filter(x => x.id !== id);
     localStorage.setItem(DESIGNS_KEY, JSON.stringify(next));
@@ -206,16 +230,26 @@ const AuthService = (() => {
 
   function onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 
+  /** Localhost-only helper for feature tests. Never grants access on the live site. */
+  function grantLocalTestAccess(email = 'local-test@example.com') {
+    const host = (typeof location !== 'undefined') ? location.hostname : '';
+    if (host !== 'localhost' && host !== '127.0.0.1') throw new Error('Test access is local only');
+    verified = true;
+    saveSession({ email, name: 'Local test', status: 'approved' });
+    notify();
+    return getState();
+  }
+
   return {
-    PLANS, ACCESS_CODES,
-    getState, getUser, getPlan,
-    signup, login, logout, redeemCode, setPlanDemo,
+    PLANS, ACCESS_CODES, PAYMENTS_VISIBLE, SUPABASE_URL,
+    getState, getUser, getPlan, isApproved,
+    requestAccess, checkStatus, login, logout, refreshSession, init,
+    signup, redeemCode, setPlanDemo,
     canUseFont, canAddLayer, canExportVideo, needsWatermark,
     listDesigns, saveNamedDesign, loadNamedDesign, deleteNamedDesign,
-    onChange,
+    onChange, grantLocalTestAccess,
     LEGACY_DESIGN_KEY,
   };
 })();
 
-// Expose for Playwright / console debugging (demo only)
 try { window.AuthService = AuthService; } catch (_) {}

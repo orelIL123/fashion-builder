@@ -4,7 +4,7 @@ A garment editor in the browser: a sewing-pattern sheet and a live 3D shirt side
 
 **Live:** https://orelil123.github.io/fashion-builder/
 
-Marker: `FB-SAAS-V1` (in page source).
+Marker: `FB-INVITE-V1` (in page source).
 
 ## Features
 
@@ -14,33 +14,28 @@ Marker: `FB-SAAS-V1` (in page source).
 - **Views:** Sewing pattern · Split · 3D, outside / inside pattern sides, front / back / side cameras, auto-rotate
 - **Design:** image and text layers on the **2D pattern map** (and 3D), click-to-place, opacity, flip, rotate handle, lock/duplicate/reorder, 35 fonts (incl. Hebrew), inside prints (neck label), solid or gradient fabric colour, rib colour, washes, save/load in browser
 - **Export:** 3D PNG (catalogue / dark / transparent), 2D pattern PNG + SVG, print files (ZIP), sublimation panels, spec sheet, **360° turntable video (~5s WebM/MP4)** (Pro)
-- **SaaS (front-end demo):** Free vs Pro (₪40/mo), sign up / log in, access codes, plan-gated fonts / layers / video / watermark
-
-## Plans (demo, client-side)
-| | Free | Pro · ₪40/mo |
-|---|---|---|
-| Layers | 3 | Unlimited |
-| Fonts | 6 starters (incl. Hebrew) | All 35 |
-| Exports | PNG/SVG with watermark | No watermark |
-| Video | — | Turntable WebM/MP4 |
-| Saves | 1 in this browser | Up to 50 named designs |
-
-**Demo access codes** (unlock Pro without payment): `PRO40`, `FRIENDS`, `DEMO40`
+- **Access:** Invite-only. Request access with an email; Orel approves or rejects from a notification email. Approved users get the full editor (all fonts, no watermark, video, up to 50 saved designs). **Currently free — pricing may change at any time.**
 
 Turntable video is recorded in-browser (2D mirror of the WebGL canvas + `captureStream(0)` / `requestFrame`). Some browsers omit duration metadata on the WebM; the file still plays.
 
-Payments are **not** connected yet — the Subscribe button shows “Payments coming soon”. Redeem a code instead.
+## Invite-only access
+The editor is gated until a request is **approved server-side** (not just in `localStorage`).
 
-### Auth security note
-This is a **demo only**. Accounts live in `localStorage` on the user’s device. Passwords are never stored in plain text (SHA-256 + random salt via SubtleCrypto), but there is **no server**, so this is **not** secure authentication. Anyone with DevTools can bypass plan checks. Treat codes and “Pro” as a UX prototype.
+1. A visitor enters their email (name optional) on **Request access / בקשת גישה**.
+2. Edge Function `request-access` inserts a `pending` row and notifies `orel895@gmail.com` via [FormSubmit.co](https://formsubmit.co) with **Approve** and **Reject** links.
+3. Those links open Edge Function `decide` and update the row. The visitor returns, enters the same email, and `check-status` lets them in if approved.
 
-### Swapping in real auth + billing later
-Auth/plan logic lives in `src/auth.js` as `AuthService`. Keep the same surface (`signup`, `login`, `logout`, `getPlan`, `redeemCode`, `canUseFont`, …) and replace the localStorage backend with:
+**Supabase:** project `orelIL123's Project` (ref `ilekmrkcsopsxckxefns`, org TooLive). Fashion Builder tables/functions are isolated (`public.fb_access_requests` + `request-access` / `decide` / `check-status`). This project already hosted another app; a brand-new Supabase project was quoted at $10/month, so this one was reused.
 
-1. **Supabase Auth** — email/password (or magic link); store `plan` on `profiles` / `subscriptions`.
-2. **Billing** — Stripe, Tranzila, or PayPlus checkout; webhook → set `plan='pro'` until `current_period_end`.
-3. **Access codes** — server table of one-time/multi-use codes; redeem via Edge Function.
-4. **Design library** — move saved designs from localStorage to a `designs` table (RLS by `user_id`).
+**What Orel must do once:** the first FormSubmit notification is an activation email. Open it in `orel895@gmail.com` and click the confirmation link. After that, new requests arrive with Approve / Reject links. FormSubmit also keeps submissions for 30 days if you confirm later.
+
+**Limitations**
+- Login after approval is email-only (no password / magic link). Anyone who knows an approved email can enter. Fine for a small designer group; swap in Supabase Auth later if needed.
+- Requesters are not emailed when you decide — they come back and enter their email to see the status.
+- FormSubmit must be activated once, as above.
+- The gate is enforced by the server for approval state, but this is still a static GitHub Pages app: a determined user can hide the overlay with DevTools. They cannot change the server-side status.
+- Saved designs still live in the browser, not in the cloud.
+- Paid plans are hidden (code kept). Planned later: ~₪30/month.
 
 Rebuild after edits: `python3 src/build.py` (bundles `auth.js` + `app.js` into `index.html`).
 
@@ -56,7 +51,7 @@ Rebuild after edits: `python3 src/build.py` (bundles `auth.js` + `app.js` into `
 | `index.html` | built app (three.js r170 from jsDelivr) |
 | `assets/shirt.glb` | raglan tee + hanger (meshopt-compressed) |
 | `assets/pattern.json` | pattern pieces |
-| `src/auth.js` | Auth / plan service (swap for Supabase later) |
+| `src/auth.js` | Invite-only AuthService (Supabase functions) + plan helpers |
 | `src/app.js`, `src/index.src.html`, `src/build.py` | edit here, then `python3 src/build.py` |
 | `blender/` | Blender pipeline |
 
@@ -68,4 +63,4 @@ python3 -m http.server 8765   # then open http://localhost:8765
 
 
 ### Build marker
-`FB-BRUSH-V1` — brush tool + back-panel drag fix.
+`FB-INVITE-V1` — invite-only access (request / approve / reject).

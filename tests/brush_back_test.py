@@ -24,27 +24,16 @@ def main():
 
         page.goto(BASE + '/?t=' + str(int(time.time()*1000)), wait_until='networkidle', timeout=120000)
         html = page.content()
-        assert_('FB-BRUSH-V1' in html, 'missing FB-BRUSH-V1 marker')
+        assert_('FB-INVITE-V1' in html, 'missing FB-INVITE-V1 marker')
 
-        if page.locator('#landing').is_visible():
-            page.click('#landingOpen')
         page.wait_for_selector('#loading', state='hidden', timeout=120000)
-        page.wait_for_timeout(1200)
-
-        # Unlock Pro so layer cap doesn't block brush
-        page.click('#accountBtn')
-        page.click('#accSignIn')
-        page.click('#authTabUp')
-        email = f'brush_{int(time.time())}@example.com'
-        page.fill('#authName', 'Brush Tester')
-        page.fill('#authEmail', email)
-        page.fill('#authPass', 'secret12')
-        page.fill('#authCode', 'DEMO40')
-        page.click('#authSubmit')
-        page.wait_for_selector('#authModal', state='hidden', timeout=10000)
+        page.wait_for_function('() => window.__FB && window.__FB.grantLocalTestAccess', timeout=30000)
+        page.evaluate('() => window.__FB.grantLocalTestAccess()')
+        page.wait_for_selector('#landing', state='hidden', timeout=10000)
         page.wait_for_timeout(400)
+
         badge = page.locator('#planBadge').inner_text().strip().lower()
-        assert_('pro' in badge, f'expected Pro, got {badge}')
+        assert_('invited' in badge, f'expected Invited, got {badge}')
 
         # --- Place text on BACK via API (UV coords) then verify piece label ---
         info = page.evaluate('''() => {

@@ -1,2 +1,5 @@
 src/index.artifact.html
 .DS_Store
+
+__pycache__/
+*.pyc

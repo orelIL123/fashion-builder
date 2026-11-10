@@ -4,7 +4,7 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Alfa+Slab+One&family=Anton&family=Archivo+Black&family=Assistant:wght@400;700&family=Bangers&family=Barlow+Condensed:wght@700&family=Bebas+Neue&family=Black+Ops+One&family=Caveat:wght@600&family=Courier+Prime&family=DM+Serif+Display&family=Familjen+Grotesk:wght@400;500;600;700&family=Frank+Ruhl+Libre:wght@400;700&family=Heebo:wght@400;700&family=Indie+Flower&family=JetBrains+Mono:wght@400;500&family=Karantina:wght@400;700&family=Lobster&family=Lora:wght@600&family=Merriweather:wght@700&family=Montserrat:wght@600;800&family=Oswald:wght@500;700&family=Pacifico&family=Permanent+Marker&family=Playfair+Display:wght@700&family=Poppins:wght@600;800&family=Press+Start+2P&family=Righteous&family=Roboto:wght@400;700&family=Rubik:wght@400;700&family=Secular+One&family=Space+Mono&family=Suez+One&family=Teko:wght@600&family=Varela+Round&display=swap">
-<!-- FB-BRUSH-V1 -->
+<!-- FB-INVITE-V1 -->
 <style>
 /* Layout: tailor's cutting table — tool rail top, two work surfaces (pattern sheet | 3D fitting), spec panel right. Single dark workshop look by choice. */
 :root{
@@ -164,6 +164,14 @@ label.field{grid-template-columns:96px 1fr 48px}
 .brush-panel{display:grid;gap:8px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
 .brush-panel[hidden]{display:none!important}
 .btn[aria-pressed="true"]{border-color:var(--accent);background:rgba(242,193,78,.16);color:var(--accent)}
+
+.free-note{margin:0 auto;max-width:540px;color:var(--accent);font-weight:600;font-size:15px}
+.free-note.he{font-weight:500}
+.gate-card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:22px;display:grid;gap:14px;max-width:440px;margin:0 auto;width:100%;text-align:left}
+.gate-status{display:grid;gap:8px;text-align:center}
+.gate-status h2{margin:0;font-size:22px;letter-spacing:-.02em;text-transform:none;color:var(--text)}
+.landing-gate .landing-hero{padding-top:8px}
+.upgrade-btn[hidden],.pricing-legacy[hidden]{display:none!important}
 </style>
 
 </head><body>
@@ -196,14 +204,14 @@ label.field{grid-template-columns:96px 1fr 48px}
       <button role="menuitem" data-exp="turntable"><b>Turntable video <span class="pro-pill">Pro</span></b><span>Short 360° rotation (~5s, WebM/MP4)</span></button>
     </div>
   </div>
-  <button class="btn" id="upgradeBtn" title="Upgrade">Upgrade · ₪40</button>
-  <span class="plan-badge" id="planBadge">Free</span>
+  <button class="btn upgrade-btn" id="upgradeBtn" title="Upgrade" hidden>Upgrade</button>
+  <span class="plan-badge" id="planBadge" hidden>Invited</span>
   <div class="menuwrap user-menu">
     <button class="btn" id="accountBtn" aria-haspopup="true" aria-expanded="false">Account</button>
     <div class="menu" id="accountMenu" hidden role="menu">
-      <button role="menuitem" id="accSignIn"><b>Sign in / Sign up</b><span>Email + password (demo, local only)</span></button>
-      <button role="menuitem" id="accPricing"><b>Plans &amp; pricing</b><span>Free · Pro ₪40/mo</span></button>
-      <button role="menuitem" id="accDesigns"><b>My designs</b><span>Save multiple designs on Pro</span></button>
+      <button role="menuitem" id="accSignIn"><b>Request access</b><span>Enter your email</span></button>
+      <button role="menuitem" id="accPricing" hidden><b>Plans &amp; pricing</b><span>Coming later</span></button>
+      <button role="menuitem" id="accDesigns"><b>My designs</b><span>Saved in this browser</span></button>
       <button role="menuitem" id="accLogout" hidden><b>Log out</b><span id="accEmailHint"></span></button>
     </div>
   </div>
@@ -393,21 +401,54 @@ label.field{grid-template-columns:96px 1fr 48px}
 <div class="modal" id="modal" hidden><div class="card"><img id="modalImg" alt="Export preview"><video id="modalVid" controls loop muted playsinline hidden style="max-width:100%;max-height:70vh;border-radius:8px"></video><p id="modalTxt">Right-click the image and choose Save Image As.</p><div class="row"><button class="btn primary" id="modalDl">Download PNG</button><button class="btn" id="modalClose">Close</button></div></div></div>
 
 
-<div class="landing" id="landing" hidden>
-  <div class="landing-inner">
+<div class="landing" id="landing">
+  <div class="landing-inner landing-gate">
     <div class="landing-hero">
       <div class="brand" style="justify-content:center;font-size:18px">
         <svg width="28" height="28" viewBox="0 0 26 26" aria-hidden="true"><path d="M8 3 3 6.5l2.6 4.2L8 9.6V23h10V9.6l2.4 1.1L23 6.5 18 3c-.9 1.9-2.8 3-5 3s-4.1-1.1-5-3Z" fill="none" stroke="#f2c14e" stroke-width="1.6" stroke-linejoin="round"/></svg>
         Fashion Builder
       </div>
-      <h1>Design garments in 2D &amp; 3D</h1>
-      <p>Place text, photos and brush paint on the sewing pattern — they land exactly on the live shirt (front and back). Export stills, pattern sheets, and a turntable video.</p>
-      <div class="row" style="justify-content:center">
-        <button class="btn primary" id="landingOpen">Open editor</button>
-        <button class="btn" id="landingAuth">Sign up / Log in</button>
+      <h1>Request access <span style="color:var(--muted);font-weight:500">/</span> בקשת גישה</h1>
+      <p>Design garments in 2D &amp; 3D — place text, photos and brush paint on the sewing pattern, and they land on the live shirt.</p>
+      <p class="free-note">Currently free — pricing may change at any time</p>
+      <p class="free-note he" dir="rtl">כרגע חינם — ייתכנו שינויים בכל עת</p>
+    </div>
+    <div class="gate-card" id="gateCard">
+      <div class="auth-tabs" id="gateTabs">
+        <button class="btn" type="button" id="gateTabRequest" aria-pressed="true">Request access · בקשת גישה</button>
+        <button class="btn" type="button" id="gateTabLogin" aria-pressed="false">I already requested · כבר ביקשתי</button>
+      </div>
+      <form id="gateForm">
+        <label id="gateNameRow">Name (optional) / שם (אופציונלי)
+          <input id="gateName" type="text" autocomplete="name" placeholder="Your name / השם שלך">
+        </label>
+        <label>Email / אימייל
+          <input id="gateEmail" type="email" required autocomplete="email" placeholder="you@email.com">
+        </label>
+        <p class="auth-error" id="gateError"></p>
+        <button class="btn primary" id="gateSubmit" type="submit">Send request · שליחת בקשה</button>
+      </form>
+      <div id="gatePending" hidden class="gate-status">
+        <h2>Your request is pending approval</h2>
+        <p dir="rtl">הבקשה שלך ממתינה לאישור</p>
+        <p class="sub" style="margin:0">You'll get in once access is approved for <b id="gatePendingEmail"></b>. Come back and enter the same email.</p>
+        <div class="row" style="justify-content:center">
+          <button class="btn" type="button" id="gateCheckAgain">Check again · בדיקה מחדש</button>
+        </div>
+      </div>
+      <div id="gateRejected" hidden class="gate-status">
+        <h2>This request wasn't approved</h2>
+        <p dir="rtl">הבקשה לא אושרה הפעם</p>
+        <p class="sub" style="margin:0">Thanks for your interest in Fashion Builder. If you think this was a mistake, you can send a new request or get in touch.</p>
+        <div class="row" style="justify-content:center">
+          <button class="btn" type="button" id="gateTryAgain">Request again · בקשה חדשה</button>
+        </div>
       </div>
     </div>
-    <div class="pricing" id="landingPricing">
+    <!-- Kept for compatibility with older test hooks; does not skip the invite gate. -->
+    <button class="btn" id="landingOpen" hidden type="button">Open editor</button>
+    <button class="btn" id="landingAuth" hidden type="button">Sign up / Log in</button>
+    <div class="pricing pricing-legacy" id="landingPricing" hidden>
       <div class="price-card">
         <h3>Free</h3>
         <div class="price">₪0 <small>/ forever</small></div>
@@ -421,7 +462,7 @@ label.field{grid-template-columns:96px 1fr 48px}
       </div>
       <div class="price-card featured">
         <h3>Pro</h3>
-        <div class="price">₪40 <small>/ month</small></div>
+        <div class="price">₪30 <small>/ month</small></div>
         <ul>
           <li>Unlimited layers &amp; all fonts</li>
           <li>No watermark</li>
@@ -429,7 +470,7 @@ label.field{grid-template-columns:96px 1fr 48px}
           <li>Save multiple designs</li>
         </ul>
         <button class="btn primary" id="pickPro">Activate Pro</button>
-        <p class="sub" style="margin:0">Payments coming soon — use an access code for now.</p>
+        <p class="sub" style="margin:0">Pricing is hidden for now — invite only, currently free.</p>
       </div>
     </div>
   </div>
@@ -451,7 +492,7 @@ label.field{grid-template-columns:96px 1fr 48px}
       <button class="btn primary" id="authSubmit">Continue</button>
       <button class="btn" id="authCancel">Cancel</button>
     </div>
-    <p class="sub">Demo auth only — stored in this browser. Passwords are hashed (SHA-256 + salt), never stored plain.</p>
+    <p class="sub">Invite-only access — enter the email you requested with.</p>
   </div>
 </div>
 
@@ -482,13 +523,23 @@ label.field{grid-template-columns:96px 1fr 48px}
 <div class="modal" id="designsModal" hidden>
   <div class="card auth-card" style="width:min(480px,100%)">
     <h2 style="text-transform:none;letter-spacing:0;font-size:20px;color:var(--text)">My designs</h2>
-    <p class="sub">Pro can keep up to 50 named designs in this browser.</p>
+    <p class="sub">You can keep up to 50 named designs in this browser.</p>
     <div class="row">
       <input id="designName" type="text" placeholder="Design name" style="flex:1;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px">
       <button class="btn primary" id="designSaveAs">Save as</button>
     </div>
     <div class="designs-list" id="designsList"></div>
     <div class="row"><button class="btn" id="designsClose">Close</button></div>
+  </div>
+</div>
+
+
+<div class="modal" id="decideModal" hidden>
+  <div class="card auth-card">
+    <h2 id="decideTitle" style="text-transform:none;letter-spacing:0;font-size:22px;color:var(--text)">Decision</h2>
+    <p id="decideBody" class="sub"></p>
+    <p id="decideBodyHe" class="sub" dir="rtl"></p>
+    <div class="row"><button class="btn primary" id="decideClose">OK</button></div>
   </div>
 </div>
 
@@ -505,17 +556,22 @@ label.field{grid-template-columns:96px 1fr 48px}
 {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}
 </script>
 <script type="module">
-/* Fashion Builder — Auth / plan service (front-end demo).
- * Swap this module for Supabase Auth + a plans table later.
- * NOT secure server auth — passwords never leave this browser, hashed with SHA-256+salt for demo only.
+/* Fashion Builder — invite-only access (Supabase) + plan helpers.
+ * Approval is stored server-side. The client caches only the email and re-checks status on load.
+ * Pricing UI is hidden for now (PAYMENTS_VISIBLE=false); plan limits stay so a paid plan can return later.
  */
 const AuthService = (() => {
-  const USERS_KEY = 'fb-saas-users-v1';
-  const SESSION_KEY = 'fb-saas-session-v1';
+  const SUPABASE_URL = 'https://ilekmrkcsopsxckxefns.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlsZWttcmtjc29wc3hja3hlZm5zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwMjQyMzMsImV4cCI6MjEwMTYwMDIzM30.jga5TlzxyEFzgV6bsaSdzW_mQOtFo_i7-7dSd4gzvdU';
+  const FN_BASE = SUPABASE_URL + '/functions/v1';
+  const SESSION_KEY = 'fb-invite-session-v1';
   const DESIGNS_KEY = 'fb-saas-designs-v1';
   const LEGACY_DESIGN_KEY = 'fashion-builder-design-v1';
 
-  /** Client-side demo codes that unlock Pro. Replace with server redeem later. */
+  /** Paid plan UI is hidden while access is invite-only. Planned later: ~₪30/mo. */
+  const PAYMENTS_VISIBLE = false;
+
+  /** Kept for when pricing returns. */
   const ACCESS_CODES = {
     PRO40: 'pro',
     FRIENDS: 'pro',
@@ -536,8 +592,8 @@ const AuthService = (() => {
     },
     pro: {
       id: 'pro',
-      name: 'Pro',
-      priceILS: 40,
+      name: 'Invited',
+      priceILS: 30,
       maxLayers: Infinity,
       maxDesigns: 50,
       videoExport: true,
@@ -548,87 +604,111 @@ const AuthService = (() => {
   };
 
   const listeners = new Set();
-
-  function loadUsers() {
-    try { return JSON.parse(localStorage.getItem(USERS_KEY) || '{}'); } catch { return {}; }
-  }
-  function saveUsers(u) { localStorage.setItem(USERS_KEY, JSON.stringify(u)); }
+  let session = loadSession(); // { email, name, status }
+  let verified = false; // true only after a successful server status check this page load
 
   function loadSession() {
     try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch { return null; }
   }
   function saveSession(s) {
+    session = s;
     if (s) localStorage.setItem(SESSION_KEY, JSON.stringify(s));
     else localStorage.removeItem(SESSION_KEY);
   }
 
-  function bytesToHex(buf) {
-    return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-  function randomSalt(n = 16) {
-    const a = new Uint8Array(n);
-    crypto.getRandomValues(a);
-    return bytesToHex(a);
-  }
-  async function hashPassword(password, salt) {
-    const data = new TextEncoder().encode(`${salt}:${password}`);
-    const dig = await crypto.subtle.digest('SHA-256', data);
-    return bytesToHex(dig);
-  }
-
   function notify() { const snap = getState(); listeners.forEach(fn => { try { fn(snap); } catch (_) {} }); }
 
-  function getUser() {
-    const sess = loadSession();
-    if (!sess?.email) return null;
-    const users = loadUsers();
-    const u = users[sess.email.toLowerCase()];
-    if (!u) return null;
-    return { email: u.email, name: u.name || '', plan: u.plan === 'pro' ? 'pro' : 'free', createdAt: u.createdAt };
+  function validEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   }
 
+  async function callFn(name, body, { method = 'POST' } = {}) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 20000);
+    try {
+      const res = await fetch(`${FN_BASE}/${name}`, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'apikey': SUPABASE_ANON_KEY,
+        },
+        body: method === 'GET' ? undefined : JSON.stringify(body || {}),
+        signal: ctrl.signal,
+      });
+      const text = await res.text();
+      let data = {};
+      try { data = JSON.parse(text); } catch { data = { ok: false, error: text || res.statusText }; }
+      if (!res.ok && !data.error) data.error = data.message || `Request failed (${res.status})`;
+      data._http = res.status;
+      return data;
+    } catch (e) {
+      if (e && e.name === 'AbortError') throw new Error('The server took too long. Try again.');
+      throw new Error('Could not reach the server. Check your connection and try again.');
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  function getUser() {
+    if (!session?.email) return null;
+    return { email: session.email, name: session.name || '', status: session.status || null };
+  }
+
+  function isApproved() { return verified && session?.status === 'approved'; }
+
   function getPlan() {
-    const u = getUser();
-    return PLANS[u?.plan === 'pro' ? 'pro' : 'free'];
+    return PLANS[isApproved() ? 'pro' : 'free'];
   }
 
   function getState() {
-    return { user: getUser(), plan: getPlan(), plans: PLANS, codesHint: Object.keys(ACCESS_CODES) };
+    return {
+      user: getUser(),
+      plan: getPlan(),
+      plans: PLANS,
+      paymentsVisible: PAYMENTS_VISIBLE,
+      approved: isApproved(),
+      codesHint: Object.keys(ACCESS_CODES),
+    };
   }
 
-  async function signup({ email, password, name, inviteCode }) {
+  async function requestAccess({ email, name } = {}) {
     email = String(email || '').trim().toLowerCase();
-    password = String(password || '');
     name = String(name || '').trim();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Enter a valid email');
-    if (password.length < 6) throw new Error('Password must be at least 6 characters');
-    const users = loadUsers();
-    if (users[email]) throw new Error('An account with this email already exists');
-    const salt = randomSalt();
-    const hash = await hashPassword(password, salt);
-    let plan = 'free';
-    const code = String(inviteCode || '').trim().toUpperCase();
-    if (code) {
-      if (!ACCESS_CODES[code]) throw new Error('Invalid invite / access code');
-      plan = ACCESS_CODES[code];
-    }
-    users[email] = { email, name, salt, hash, plan, createdAt: Date.now() };
-    saveUsers(users);
-    saveSession({ email });
+    if (!validEmail(email)) throw new Error('Enter a valid email / הזן אימייל תקין');
+    const data = await callFn('request-access', { email, name });
+    if (!data.ok) throw new Error(data.error || 'Could not send the request');
+    verified = true;
+    saveSession({ email, name, status: data.status || 'pending' });
     notify();
-    return getState();
+    return { ...getState(), email_sent: data.email_sent, email_detail: data.email_detail, already: data.already };
   }
 
-  async function login({ email, password }) {
+  async function checkStatus(email) {
+    email = String(email || session?.email || '').trim().toLowerCase();
+    if (!validEmail(email)) throw new Error('Enter a valid email / הזן אימייל תקין');
+    const data = await callFn('check-status', { email });
+    if (!data.ok && data.status === undefined) throw new Error(data.error || 'Could not check status');
+    return { status: data.status || 'unknown', name: data.name || '', email };
+  }
+
+  async function login({ email } = {}) {
     email = String(email || '').trim().toLowerCase();
-    password = String(password || '');
-    const users = loadUsers();
-    const u = users[email];
-    if (!u) throw new Error('No account found for that email');
-    const hash = await hashPassword(password, u.salt);
-    if (hash !== u.hash) throw new Error('Wrong password');
-    saveSession({ email });
+    const st = await checkStatus(email);
+    if (st.status === 'unknown') throw new Error('No request found for that email / לא נמצאה בקשה לאימייל הזה');
+    verified = true;
+    saveSession({ email, name: st.name || '', status: st.status });
     notify();
+    if (st.status === 'pending') {
+      const err = new Error('pending');
+      err.code = 'pending';
+      throw err;
+    }
+    if (st.status === 'rejected') {
+      const err = new Error('rejected');
+      err.code = 'rejected';
+      throw err;
+    }
     return getState();
   }
 
@@ -638,41 +718,39 @@ const AuthService = (() => {
     return getState();
   }
 
-  function redeemCode(code) {
-    const u = getUser();
-    if (!u) throw new Error('Sign in first to redeem a code');
-    code = String(code || '').trim().toUpperCase();
-    const plan = ACCESS_CODES[code];
-    if (!plan) throw new Error('Invalid access code');
-    const users = loadUsers();
-    users[u.email].plan = plan;
-    saveUsers(users);
-    notify();
+  async function refreshSession() {
+    verified = false;
+    if (!session?.email) { verified = true; return getState(); }
+    try {
+      const st = await checkStatus(session.email);
+      if (st.status === 'unknown') saveSession(null);
+      else saveSession({ email: session.email, name: st.name || session.name || '', status: st.status });
+      verified = true;
+      notify();
+    } catch (_) {
+      /* Keep the email on the gate, but do not open the editor without a fresh check. */
+    }
     return getState();
   }
 
-  /** Demo-only: set plan without payment. Real billing comes later. */
-  function setPlanDemo(planId) {
-    const u = getUser();
-    if (!u) throw new Error('Sign in first');
-    if (!PLANS[planId]) throw new Error('Unknown plan');
-    const users = loadUsers();
-    users[u.email].plan = planId;
-    saveUsers(users);
-    notify();
+  async function init() {
+    await refreshSession();
     return getState();
   }
+
+  /** Demo leftovers — kept so a paid plan can return without rewriting callers. */
+  async function signup({ email, password, name, inviteCode }) {
+    return requestAccess({ email, name });
+  }
+  async function redeemCode() { throw new Error('Access is invite-only for now'); }
+  function setPlanDemo() { throw new Error('Access is invite-only for now'); }
 
   function canUseFont(font) {
     const p = getPlan();
     if (p.allFonts) return true;
     return (p.fonts || []).includes(font);
   }
-
-  function canAddLayer(currentCount) {
-    return currentCount < getPlan().maxLayers;
-  }
-
+  function canAddLayer(currentCount) { return currentCount < getPlan().maxLayers; }
   function canExportVideo() { return !!getPlan().videoExport; }
   function needsWatermark() { return !!getPlan().watermark; }
 
@@ -682,7 +760,6 @@ const AuthService = (() => {
       return Array.isArray(all) ? all : [];
     } catch { return []; }
   }
-
   function saveNamedDesign(name, payload) {
     const plan = getPlan();
     const designs = listDesigns();
@@ -692,19 +769,17 @@ const AuthService = (() => {
       localStorage.setItem(DESIGNS_KEY, JSON.stringify([entry]));
       return entry;
     }
-    if (designs.length >= plan.maxDesigns) throw new Error(`Pro design library is full (${plan.maxDesigns})`);
+    if (designs.length >= plan.maxDesigns) throw new Error(`Design library is full (${plan.maxDesigns})`);
     designs.unshift(entry);
     localStorage.setItem(DESIGNS_KEY, JSON.stringify(designs.slice(0, plan.maxDesigns)));
     localStorage.setItem(LEGACY_DESIGN_KEY, JSON.stringify(payload));
     return entry;
   }
-
   function loadNamedDesign(id) {
     const d = listDesigns().find(x => x.id === id);
     if (!d) throw new Error('Design not found');
     return d;
   }
-
   function deleteNamedDesign(id) {
     const next = listDesigns().filter(x => x.id !== id);
     localStorage.setItem(DESIGNS_KEY, JSON.stringify(next));
@@ -713,18 +788,28 @@ const AuthService = (() => {
 
   function onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 
+  /** Localhost-only helper for feature tests. Never grants access on the live site. */
+  function grantLocalTestAccess(email = 'local-test@example.com') {
+    const host = (typeof location !== 'undefined') ? location.hostname : '';
+    if (host !== 'localhost' && host !== '127.0.0.1') throw new Error('Test access is local only');
+    verified = true;
+    saveSession({ email, name: 'Local test', status: 'approved' });
+    notify();
+    return getState();
+  }
+
   return {
-    PLANS, ACCESS_CODES,
-    getState, getUser, getPlan,
-    signup, login, logout, redeemCode, setPlanDemo,
+    PLANS, ACCESS_CODES, PAYMENTS_VISIBLE, SUPABASE_URL,
+    getState, getUser, getPlan, isApproved,
+    requestAccess, checkStatus, login, logout, refreshSession, init,
+    signup, redeemCode, setPlanDemo,
     canUseFont, canAddLayer, canExportVideo, needsWatermark,
     listDesigns, saveNamedDesign, loadNamedDesign, deleteNamedDesign,
-    onChange,
+    onChange, grantLocalTestAccess,
     LEGACY_DESIGN_KEY,
   };
 })();
 
-// Expose for Playwright / console debugging (demo only)
 try { window.AuthService = AuthService; } catch (_) {}
 
 import * as THREE from 'three';
@@ -747,12 +832,20 @@ const toast = msg => { const t = document.createElement('div'); t.className = 't
 function plan(){ return AuthService.getPlan(); }
 function requirePro(feature){
   if (plan().id === 'pro') return true;
-  toast((feature||'This feature') + ' is Pro · ₪40/mo');
+  if (!AuthService.PAYMENTS_VISIBLE){
+    toast((feature||'This feature') + ' needs access');
+    return false;
+  }
+  toast((feature||'This feature') + ' is Pro');
   openPricing();
   return false;
 }
 function ensureLayerRoom(){
   if (AuthService.canAddLayer(S.layers.length)) return true;
+  if (!AuthService.PAYMENTS_VISIBLE){
+    toast(`Layer limit reached (${plan().maxLayers}).`);
+    return false;
+  }
   toast(`Free plan: max ${plan().maxLayers} layers. Upgrade to Pro for unlimited.`);
   openPricing();
   return false;
@@ -776,22 +869,30 @@ async function withWatermarkCanvas(srcCanvas){
 function refreshPlanUI(){
   const st = AuthService.getState();
   const badge = $('planBadge');
-  if (badge){ badge.textContent = st.plan.name; badge.classList.toggle('pro', st.plan.id==='pro'); }
+  const approved = AuthService.isApproved();
+  if (badge){
+    badge.hidden = !approved;
+    badge.textContent = approved ? 'Invited' : (st.plan.name || '');
+    badge.classList.toggle('pro', approved);
+  }
+  if ($('upgradeBtn')) $('upgradeBtn').hidden = !AuthService.PAYMENTS_VISIBLE;
+  if ($('accPricing')) $('accPricing').hidden = !AuthService.PAYMENTS_VISIBLE;
+  if ($('landingPricing')) $('landingPricing').hidden = !AuthService.PAYMENTS_VISIBLE;
   const logged = !!st.user;
-  if ($('accLogout')) $('accLogout').hidden = !logged;
+  if ($('accLogout')) $('accLogout').hidden = !approved;
   if ($('accEmailHint')) $('accEmailHint').textContent = st.user ? st.user.email : '';
-  if ($('accSignIn')) $('accSignIn').querySelector('b').textContent = logged ? 'Account' : 'Sign in / Sign up';
-  // font options
+  if ($('accSignIn')){
+    const b = $('accSignIn').querySelector('b');
+    if (b) b.textContent = approved ? 'Account' : 'Request access';
+  }
   const sel = $('textFont');
   if (sel){
     [...sel.options].forEach(o=>{
-      const proOnly = o.dataset.pro === '1';
       const allowed = AuthService.canUseFont(o.value);
-      o.disabled = proOnly && !allowed;
+      o.disabled = !allowed;
       o.hidden = false;
     });
   }
-  // turntable menu hint already has Pro pill
 }
 
 
@@ -1931,64 +2032,148 @@ document.addEventListener('click', e=>{ if(!e.target.closest('.menuwrap')){ $('e
 document.querySelectorAll('[data-exp]').forEach(b=>b.onclick = ()=>{ $('exportMenu').hidden = true; EXPORTS[b.dataset.exp]().catch(err=>{ console.error(err); toast('Export failed: '+err.message); }); });
 $('snap').onclick = async ()=>{ const r = await capture3dPng({mode:'catalogue'}); showModal({img:URL.createObjectURL(r.blob), blob:r.blob, name:'3d-snapshot.png', txt:r.txt}); };
 
-// ---------- SaaS UI: landing, auth, pricing, designs ----------
-let authMode = 'in';
-function openLanding(){ $('landing').hidden = false; }
-function closeLanding(){ $('landing').hidden = true; try{ sessionStorage.setItem('fb-entered','1'); }catch(_){} }
-function openAuth(mode){
-  authMode = mode || 'in';
-  $('authModal').hidden = false;
-  $('authError').textContent = '';
-  $('authTabIn').setAttribute('aria-pressed', authMode==='in');
-  $('authTabUp').setAttribute('aria-pressed', authMode==='up');
-  $('authTitle').textContent = authMode==='up' ? 'Create account' : 'Sign in';
-  $('authName').parentElement.hidden = authMode!=='up';
-  $('authCodeRow').hidden = authMode!=='up';
-  $('authPass').autocomplete = authMode==='up' ? 'new-password' : 'current-password';
+// ---------- Invite gate, account, (hidden) pricing, designs ----------
+let gateMode = 'request';
+
+function openLanding(){ $('landing').hidden = false; syncGateView(); }
+function closeLanding(){
+  if (!AuthService.isApproved()){ openLanding(); return; }
+  $('landing').hidden = true;
 }
-function closeAuth(){ $('authModal').hidden = true; }
-function openPricing(){ $('pricingModal').hidden = false; $('paySoon').hidden = true; }
+function openAuth(){ openLanding(); setGateMode('login'); }
+function closeAuth(){ if ($('authModal')) $('authModal').hidden = true; }
+function openPricing(){
+  if (!AuthService.PAYMENTS_VISIBLE){ toast('Access is invite-only for now. Currently free — pricing may change later.'); return; }
+  $('pricingModal').hidden = false;
+  if ($('paySoon')) $('paySoon').hidden = true;
+}
 function closePricing(){ $('pricingModal').hidden = true; }
 
-$('landingOpen').onclick = ()=> closeLanding();
-$('pickFree').onclick = ()=> closeLanding();
-$('landingAuth').onclick = ()=> openAuth('up');
-$('pickPro').onclick = ()=>{ closeLanding(); if (!AuthService.getUser()) openAuth('up'); else openPricing(); };
+function setGateMode(mode){
+  gateMode = mode === 'login' ? 'login' : 'request';
+  if ($('gateTabRequest')) $('gateTabRequest').setAttribute('aria-pressed', gateMode==='request');
+  if ($('gateTabLogin')) $('gateTabLogin').setAttribute('aria-pressed', gateMode==='login');
+  if ($('gateNameRow')) $('gateNameRow').hidden = gateMode!=='request';
+  if ($('gateSubmit')) $('gateSubmit').textContent = gateMode==='request' ? 'Send request · שליחת בקשה' : 'Continue · כניסה';
+  if ($('gateError')) $('gateError').textContent = '';
+}
 
-$('upgradeBtn').onclick = ()=> openPricing();
+function showGatePanel(which){
+  const form = $('gateForm'), pend = $('gatePending'), rej = $('gateRejected'), tabs = $('gateTabs');
+  if (form) form.hidden = which !== 'form';
+  if (tabs) tabs.hidden = which !== 'form';
+  if (pend) pend.hidden = which !== 'pending';
+  if (rej) rej.hidden = which !== 'rejected';
+}
+
+function syncGateView(){
+  const u = AuthService.getUser();
+  if (AuthService.isApproved()){ $('landing').hidden = true; return; }
+  $('landing').hidden = false;
+  if (u?.status === 'pending'){
+    if ($('gatePendingEmail')) $('gatePendingEmail').textContent = u.email;
+    showGatePanel('pending');
+  } else if (u?.status === 'rejected'){
+    showGatePanel('rejected');
+  } else {
+    showGatePanel('form');
+    if (u?.email && $('gateEmail') && !$('gateEmail').value) $('gateEmail').value = u.email;
+  }
+}
+
+async function enterIfApproved(){
+  refreshPlanUI();
+  if (AuthService.isApproved()){
+    closeLanding();
+    toast('Welcome — you’re in');
+    return true;
+  }
+  syncGateView();
+  return false;
+}
+
+$('gateTabRequest') && ($('gateTabRequest').onclick = ()=>{ showGatePanel('form'); setGateMode('request'); });
+$('gateTabLogin') && ($('gateTabLogin').onclick = ()=>{ showGatePanel('form'); setGateMode('login'); });
+$('landingOpen') && ($('landingOpen').onclick = ()=> closeLanding());
+$('pickFree') && ($('pickFree').onclick = ()=> closeLanding());
+$('landingAuth') && ($('landingAuth').onclick = ()=> setGateMode('login'));
+$('pickPro') && ($('pickPro').onclick = ()=> openPricing());
+
+$('upgradeBtn') && ($('upgradeBtn').onclick = ()=> openPricing());
 $('accountBtn').onclick = e=>{ e.stopPropagation(); const m=$('accountMenu'); m.hidden = !m.hidden; $('accountBtn').setAttribute('aria-expanded', !m.hidden); $('exportMenu').hidden = true; };
-$('accSignIn').onclick = ()=>{ $('accountMenu').hidden = true; openAuth(AuthService.getUser()?'in':'up'); };
-$('accPricing').onclick = ()=>{ $('accountMenu').hidden = true; openPricing(); };
-$('accLogout').onclick = ()=>{ AuthService.logout(); refreshPlanUI(); toast('Logged out'); $('accountMenu').hidden = true; };
+$('accSignIn').onclick = ()=>{ $('accountMenu').hidden = true; if (AuthService.isApproved()) toast(AuthService.getUser().email); else openLanding(); };
+$('accPricing') && ($('accPricing').onclick = ()=>{ $('accountMenu').hidden = true; openPricing(); });
+$('accLogout').onclick = ()=>{ AuthService.logout(); refreshPlanUI(); openLanding(); toast('Logged out'); $('accountMenu').hidden = true; };
 $('accDesigns').onclick = ()=>{ $('accountMenu').hidden = true; openDesigns(); };
 
-$('authTabIn').onclick = ()=> openAuth('in');
-$('authTabUp').onclick = ()=> openAuth('up');
-$('authCancel').onclick = ()=> closeAuth();
-$('authSubmit').onclick = async ()=>{
+$('gateForm') && ($('gateForm').onsubmit = async ev=>{
+  ev.preventDefault();
+  if ($('gateError')) $('gateError').textContent = '';
+  const email = $('gateEmail').value;
+  const name = $('gateName') ? $('gateName').value : '';
+  const btn = $('gateSubmit');
+  if (btn) btn.disabled = true;
+  try {
+    if (gateMode === 'login'){
+      try {
+        await AuthService.login({ email });
+        await enterIfApproved();
+      } catch (err) {
+        if (err.code === 'pending'){ syncGateView(); return; }
+        if (err.code === 'rejected'){ syncGateView(); return; }
+        throw err;
+      }
+    } else {
+      await AuthService.requestAccess({ email, name });
+      if (!(await enterIfApproved())){
+        if (AuthService.getUser()?.status === 'pending'){
+          toast('Request sent — waiting for approval');
+        }
+      }
+    }
+  } catch (err) {
+    if ($('gateError')) $('gateError').textContent = err.message;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+});
+$('gateCheckAgain') && ($('gateCheckAgain').onclick = async ()=>{
+  try {
+    const email = AuthService.getUser()?.email || $('gateEmail').value;
+    await AuthService.login({ email });
+    await enterIfApproved();
+  } catch (err) {
+    if (err.code === 'pending'){ toast('Still pending / עדיין ממתין לאישור'); syncGateView(); }
+    else if (err.code === 'rejected') syncGateView();
+    else if ($('gateError')) { showGatePanel('form'); $('gateError').textContent = err.message; }
+  }
+});
+$('gateTryAgain') && ($('gateTryAgain').onclick = ()=>{
+  const email = AuthService.getUser()?.email || '';
+  AuthService.logout();
+  showGatePanel('form');
+  setGateMode('request');
+  if ($('gateEmail') && email) $('gateEmail').value = email;
+});
+
+// Legacy auth modal (kept in DOM, unused in invite mode)
+if ($('authTabIn')) $('authTabIn').onclick = ()=> setGateMode('login');
+if ($('authTabUp')) $('authTabUp').onclick = ()=> setGateMode('request');
+if ($('authCancel')) $('authCancel').onclick = ()=> closeAuth();
+if ($('authSubmit')) $('authSubmit').onclick = async ()=>{
   $('authError').textContent = '';
   try {
-    if (authMode==='up') await AuthService.signup({email:$('authEmail').value, password:$('authPass').value, name:$('authName').value, inviteCode:$('authCode').value});
-    else await AuthService.login({email:$('authEmail').value, password:$('authPass').value});
-    refreshPlanUI(); closeAuth(); closeLanding();
-    toast(AuthService.getPlan().id==='pro' ? 'Welcome — Pro unlocked' : 'Signed in · Free plan');
+    await AuthService.requestAccess({email:$('authEmail').value, name:$('authName').value});
+    closeAuth();
+    await enterIfApproved();
   } catch(err){ $('authError').textContent = err.message; }
 };
-$('pricingClose').onclick = ()=> closePricing();
-$('subscribeBtn').onclick = ()=>{ $('paySoon').hidden = false; toast('Payments coming soon'); };
-$('redeemBtn').onclick = ()=>{
-  try {
-    if (!AuthService.getUser()){ closePricing(); openAuth('up'); toast('Sign up first, then redeem the code'); return; }
-    AuthService.redeemCode($('redeemCode').value);
-    refreshPlanUI(); closePricing(); toast('Pro activated with access code');
-  } catch(err){ toast(err.message); }
-};
+if ($('pricingClose')) $('pricingClose').onclick = ()=> closePricing();
+if ($('subscribeBtn')) $('subscribeBtn').onclick = ()=>{ $('paySoon').hidden = false; toast('Payments coming later'); };
+if ($('redeemBtn')) $('redeemBtn').onclick = ()=> toast('Access is invite-only for now');
 
 function openDesigns(){
-  if (!requirePro('Multiple saved designs') && plan().maxDesigns<=1){
-    // requirePro already opened pricing; still allow viewing single save message
-  }
-  if (plan().id !== 'pro'){ openPricing(); return; }
+  if (!AuthService.isApproved()){ openLanding(); return; }
   $('designsModal').hidden = false;
   renderDesignsList();
 }
@@ -2017,9 +2202,44 @@ $('designSaveAs').onclick = async ()=>{
   } catch(err){ toast(err.message); }
 };
 
-AuthService.onChange(()=> refreshPlanUI());
+
+async function handleDecideLink(){
+  const m = String(location.hash||'').match(/^#decide\/(approve|reject)\/([0-9a-f]{32,})$/i);
+  if (!m) return;
+  try { history.replaceState(null, '', location.pathname + location.search); } catch(_){}
+  try {
+    const res = await fetch(AuthService.SUPABASE_URL + '/functions/v1/decide', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'Accept':'application/json' },
+      body: JSON.stringify({ token: m[2], action: m[1].toLowerCase() }),
+    });
+    const data = await res.json().catch(()=>({}));
+    const approved = data.status === 'approved';
+    const who = data.name ? `${data.name} (${data.email||''})` : (data.email || '');
+    if ($('decideTitle')) $('decideTitle').textContent = approved ? 'Access approved' : (data.ok ? 'Request declined' : 'Could not update this request');
+    if ($('decideBody')) $('decideBody').textContent = approved
+      ? `${who} can now enter Fashion Builder with this email.`
+      : (data.ok ? `${who} will see a short message if they check their status.` : (data.error || 'Please try the link again.'));
+    if ($('decideBodyHe')) $('decideBodyHe').textContent = approved
+      ? `${who} יכול/ה להיכנס עכשיו עם אותו אימייל.`
+      : (data.ok ? `הבקשה של ${who} נדחתה.` : 'לא ניתן לעדכן את הבקשה.');
+    if ($('decideModal')) $('decideModal').hidden = false;
+  } catch (err) {
+    if ($('decideTitle')) $('decideTitle').textContent = 'Could not update this request';
+    if ($('decideBody')) $('decideBody').textContent = err.message || 'Network error';
+    if ($('decideModal')) $('decideModal').hidden = false;
+  }
+}
+$('decideClose') && ($('decideClose').onclick = ()=> { $('decideModal').hidden = true; });
+
+AuthService.onChange(()=> { refreshPlanUI(); if (!AuthService.isApproved()) openLanding(); });
 refreshPlanUI();
-try { if (!sessionStorage.getItem('fb-entered')) openLanding(); } catch(_){ openLanding(); }
+setGateMode('request');
+try { await AuthService.init(); } catch(_){}
+refreshPlanUI();
+if (AuthService.isApproved()) $('landing').hidden = true;
+else openLanding();
+await handleDecideLink();
 
 
 
@@ -2043,6 +2263,7 @@ FONT_LIST.slice(8).forEach(f=>ensureFont(f));
 setFabric(S.fabric); setBg(S.bg); applyMaterial(); renderLayers(); resizeGL(); resizePattern(); commit(); loop();
 try {
   window.__FB = {
+    grantLocalTestAccess: (email) => { AuthService.grantLocalTestAccess(email); refreshPlanUI(); closeLanding(); },
     getS: () => S, getLayers: () => S.layers, pieceById, pieces: () => pieces, SHOWN: () => SHOWN,
     TEX, PX, BRUSH, PV, pieceAt, fromDisplay, toView, toSheet, hitLayer, composeSheet, select, addText, ensureBrushLayer,
     setBrushMode, moveLayerToPiece, stampBrush, commit, renderLayers, rebuildText, fitPattern,

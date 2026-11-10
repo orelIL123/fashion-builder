@@ -2,7 +2,7 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Alfa+Slab+One&family=Anton&family=Archivo+Black&family=Assistant:wght@400;700&family=Bangers&family=Barlow+Condensed:wght@700&family=Bebas+Neue&family=Black+Ops+One&family=Caveat:wght@600&family=Courier+Prime&family=DM+Serif+Display&family=Familjen+Grotesk:wght@400;500;600;700&family=Frank+Ruhl+Libre:wght@400;700&family=Heebo:wght@400;700&family=Indie+Flower&family=JetBrains+Mono:wght@400;500&family=Karantina:wght@400;700&family=Lobster&family=Lora:wght@600&family=Merriweather:wght@700&family=Montserrat:wght@600;800&family=Oswald:wght@500;700&family=Pacifico&family=Permanent+Marker&family=Playfair+Display:wght@700&family=Poppins:wght@600;800&family=Press+Start+2P&family=Righteous&family=Roboto:wght@400;700&family=Rubik:wght@400;700&family=Secular+One&family=Space+Mono&family=Suez+One&family=Teko:wght@600&family=Varela+Round&display=swap">
-<!-- FB-BRUSH-V1 -->
+<!-- FB-INVITE-V1 -->
 <style>
 /* Layout: tailor's cutting table — tool rail top, two work surfaces (pattern sheet | 3D fitting), spec panel right. Single dark workshop look by choice. */
 :root{
@@ -162,6 +162,14 @@ label.field{grid-template-columns:96px 1fr 48px}
 .brush-panel{display:grid;gap:8px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
 .brush-panel[hidden]{display:none!important}
 .btn[aria-pressed="true"]{border-color:var(--accent);background:rgba(242,193,78,.16);color:var(--accent)}
+
+.free-note{margin:0 auto;max-width:540px;color:var(--accent);font-weight:600;font-size:15px}
+.free-note.he{font-weight:500}
+.gate-card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:22px;display:grid;gap:14px;max-width:440px;margin:0 auto;width:100%;text-align:left}
+.gate-status{display:grid;gap:8px;text-align:center}
+.gate-status h2{margin:0;font-size:22px;letter-spacing:-.02em;text-transform:none;color:var(--text)}
+.landing-gate .landing-hero{padding-top:8px}
+.upgrade-btn[hidden],.pricing-legacy[hidden]{display:none!important}
 </style>
 
 <div class="app">
@@ -193,14 +201,14 @@ label.field{grid-template-columns:96px 1fr 48px}
       <button role="menuitem" data-exp="turntable"><b>Turntable video <span class="pro-pill">Pro</span></b><span>Short 360° rotation (~5s, WebM/MP4)</span></button>
     </div>
   </div>
-  <button class="btn" id="upgradeBtn" title="Upgrade">Upgrade · ₪40</button>
-  <span class="plan-badge" id="planBadge">Free</span>
+  <button class="btn upgrade-btn" id="upgradeBtn" title="Upgrade" hidden>Upgrade</button>
+  <span class="plan-badge" id="planBadge" hidden>Invited</span>
   <div class="menuwrap user-menu">
     <button class="btn" id="accountBtn" aria-haspopup="true" aria-expanded="false">Account</button>
     <div class="menu" id="accountMenu" hidden role="menu">
-      <button role="menuitem" id="accSignIn"><b>Sign in / Sign up</b><span>Email + password (demo, local only)</span></button>
-      <button role="menuitem" id="accPricing"><b>Plans &amp; pricing</b><span>Free · Pro ₪40/mo</span></button>
-      <button role="menuitem" id="accDesigns"><b>My designs</b><span>Save multiple designs on Pro</span></button>
+      <button role="menuitem" id="accSignIn"><b>Request access</b><span>Enter your email</span></button>
+      <button role="menuitem" id="accPricing" hidden><b>Plans &amp; pricing</b><span>Coming later</span></button>
+      <button role="menuitem" id="accDesigns"><b>My designs</b><span>Saved in this browser</span></button>
       <button role="menuitem" id="accLogout" hidden><b>Log out</b><span id="accEmailHint"></span></button>
     </div>
   </div>
@@ -390,21 +398,54 @@ label.field{grid-template-columns:96px 1fr 48px}
 <div class="modal" id="modal" hidden><div class="card"><img id="modalImg" alt="Export preview"><video id="modalVid" controls loop muted playsinline hidden style="max-width:100%;max-height:70vh;border-radius:8px"></video><p id="modalTxt">Right-click the image and choose Save Image As.</p><div class="row"><button class="btn primary" id="modalDl">Download PNG</button><button class="btn" id="modalClose">Close</button></div></div></div>
 
 
-<div class="landing" id="landing" hidden>
-  <div class="landing-inner">
+<div class="landing" id="landing">
+  <div class="landing-inner landing-gate">
     <div class="landing-hero">
       <div class="brand" style="justify-content:center;font-size:18px">
         <svg width="28" height="28" viewBox="0 0 26 26" aria-hidden="true"><path d="M8 3 3 6.5l2.6 4.2L8 9.6V23h10V9.6l2.4 1.1L23 6.5 18 3c-.9 1.9-2.8 3-5 3s-4.1-1.1-5-3Z" fill="none" stroke="#f2c14e" stroke-width="1.6" stroke-linejoin="round"/></svg>
         Fashion Builder
       </div>
-      <h1>Design garments in 2D &amp; 3D</h1>
-      <p>Place text, photos and brush paint on the sewing pattern — they land exactly on the live shirt (front and back). Export stills, pattern sheets, and a turntable video.</p>
-      <div class="row" style="justify-content:center">
-        <button class="btn primary" id="landingOpen">Open editor</button>
-        <button class="btn" id="landingAuth">Sign up / Log in</button>
+      <h1>Request access <span style="color:var(--muted);font-weight:500">/</span> בקשת גישה</h1>
+      <p>Design garments in 2D &amp; 3D — place text, photos and brush paint on the sewing pattern, and they land on the live shirt.</p>
+      <p class="free-note">Currently free — pricing may change at any time</p>
+      <p class="free-note he" dir="rtl">כרגע חינם — ייתכנו שינויים בכל עת</p>
+    </div>
+    <div class="gate-card" id="gateCard">
+      <div class="auth-tabs" id="gateTabs">
+        <button class="btn" type="button" id="gateTabRequest" aria-pressed="true">Request access · בקשת גישה</button>
+        <button class="btn" type="button" id="gateTabLogin" aria-pressed="false">I already requested · כבר ביקשתי</button>
+      </div>
+      <form id="gateForm">
+        <label id="gateNameRow">Name (optional) / שם (אופציונלי)
+          <input id="gateName" type="text" autocomplete="name" placeholder="Your name / השם שלך">
+        </label>
+        <label>Email / אימייל
+          <input id="gateEmail" type="email" required autocomplete="email" placeholder="you@email.com">
+        </label>
+        <p class="auth-error" id="gateError"></p>
+        <button class="btn primary" id="gateSubmit" type="submit">Send request · שליחת בקשה</button>
+      </form>
+      <div id="gatePending" hidden class="gate-status">
+        <h2>Your request is pending approval</h2>
+        <p dir="rtl">הבקשה שלך ממתינה לאישור</p>
+        <p class="sub" style="margin:0">You'll get in once access is approved for <b id="gatePendingEmail"></b>. Come back and enter the same email.</p>
+        <div class="row" style="justify-content:center">
+          <button class="btn" type="button" id="gateCheckAgain">Check again · בדיקה מחדש</button>
+        </div>
+      </div>
+      <div id="gateRejected" hidden class="gate-status">
+        <h2>This request wasn't approved</h2>
+        <p dir="rtl">הבקשה לא אושרה הפעם</p>
+        <p class="sub" style="margin:0">Thanks for your interest in Fashion Builder. If you think this was a mistake, you can send a new request or get in touch.</p>
+        <div class="row" style="justify-content:center">
+          <button class="btn" type="button" id="gateTryAgain">Request again · בקשה חדשה</button>
+        </div>
       </div>
     </div>
-    <div class="pricing" id="landingPricing">
+    <!-- Kept for compatibility with older test hooks; does not skip the invite gate. -->
+    <button class="btn" id="landingOpen" hidden type="button">Open editor</button>
+    <button class="btn" id="landingAuth" hidden type="button">Sign up / Log in</button>
+    <div class="pricing pricing-legacy" id="landingPricing" hidden>
       <div class="price-card">
         <h3>Free</h3>
         <div class="price">₪0 <small>/ forever</small></div>
@@ -418,7 +459,7 @@ label.field{grid-template-columns:96px 1fr 48px}
       </div>
       <div class="price-card featured">
         <h3>Pro</h3>
-        <div class="price">₪40 <small>/ month</small></div>
+        <div class="price">₪30 <small>/ month</small></div>
         <ul>
           <li>Unlimited layers &amp; all fonts</li>
           <li>No watermark</li>
@@ -426,7 +467,7 @@ label.field{grid-template-columns:96px 1fr 48px}
           <li>Save multiple designs</li>
         </ul>
         <button class="btn primary" id="pickPro">Activate Pro</button>
-        <p class="sub" style="margin:0">Payments coming soon — use an access code for now.</p>
+        <p class="sub" style="margin:0">Pricing is hidden for now — invite only, currently free.</p>
       </div>
     </div>
   </div>
@@ -448,7 +489,7 @@ label.field{grid-template-columns:96px 1fr 48px}
       <button class="btn primary" id="authSubmit">Continue</button>
       <button class="btn" id="authCancel">Cancel</button>
     </div>
-    <p class="sub">Demo auth only — stored in this browser. Passwords are hashed (SHA-256 + salt), never stored plain.</p>
+    <p class="sub">Invite-only access — enter the email you requested with.</p>
   </div>
 </div>
 
@@ -479,13 +520,23 @@ label.field{grid-template-columns:96px 1fr 48px}
 <div class="modal" id="designsModal" hidden>
   <div class="card auth-card" style="width:min(480px,100%)">
     <h2 style="text-transform:none;letter-spacing:0;font-size:20px;color:var(--text)">My designs</h2>
-    <p class="sub">Pro can keep up to 50 named designs in this browser.</p>
+    <p class="sub">You can keep up to 50 named designs in this browser.</p>
     <div class="row">
       <input id="designName" type="text" placeholder="Design name" style="flex:1;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px">
       <button class="btn primary" id="designSaveAs">Save as</button>
     </div>
     <div class="designs-list" id="designsList"></div>
     <div class="row"><button class="btn" id="designsClose">Close</button></div>
+  </div>
+</div>
+
+
+<div class="modal" id="decideModal" hidden>
+  <div class="card auth-card">
+    <h2 id="decideTitle" style="text-transform:none;letter-spacing:0;font-size:22px;color:var(--text)">Decision</h2>
+    <p id="decideBody" class="sub"></p>
+    <p id="decideBodyHe" class="sub" dir="rtl"></p>
+    <div class="row"><button class="btn primary" id="decideClose">OK</button></div>
   </div>
 </div>
 

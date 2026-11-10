@@ -18,12 +18,20 @@ const toast = msg => { const t = document.createElement('div'); t.className = 't
 function plan(){ return AuthService.getPlan(); }
 function requirePro(feature){
   if (plan().id === 'pro') return true;
-  toast((feature||'This feature') + ' is Pro · ₪40/mo');
+  if (!AuthService.PAYMENTS_VISIBLE){
+    toast((feature||'This feature') + ' needs access');
+    return false;
+  }
+  toast((feature||'This feature') + ' is Pro');
   openPricing();
   return false;
 }
 function ensureLayerRoom(){
   if (AuthService.canAddLayer(S.layers.length)) return true;
+  if (!AuthService.PAYMENTS_VISIBLE){
+    toast(`Layer limit reached (${plan().maxLayers}).`);
+    return false;
+  }
   toast(`Free plan: max ${plan().maxLayers} layers. Upgrade to Pro for unlimited.`);
   openPricing();
   return false;
@@ -47,22 +55,30 @@ async function withWatermarkCanvas(srcCanvas){
 function refreshPlanUI(){
   const st = AuthService.getState();
   const badge = $('planBadge');
-  if (badge){ badge.textContent = st.plan.name; badge.classList.toggle('pro', st.plan.id==='pro'); }
+  const approved = AuthService.isApproved();
+  if (badge){
+    badge.hidden = !approved;
+    badge.textContent = approved ? 'Invited' : (st.plan.name || '');
+    badge.classList.toggle('pro', approved);
+  }
+  if ($('upgradeBtn')) $('upgradeBtn').hidden = !AuthService.PAYMENTS_VISIBLE;
+  if ($('accPricing')) $('accPricing').hidden = !AuthService.PAYMENTS_VISIBLE;
+  if ($('landingPricing')) $('landingPricing').hidden = !AuthService.PAYMENTS_VISIBLE;
   const logged = !!st.user;
-  if ($('accLogout')) $('accLogout').hidden = !logged;
+  if ($('accLogout')) $('accLogout').hidden = !approved;
   if ($('accEmailHint')) $('accEmailHint').textContent = st.user ? st.user.email : '';
-  if ($('accSignIn')) $('accSignIn').querySelector('b').textContent = logged ? 'Account' : 'Sign in / Sign up';
-  // font options
+  if ($('accSignIn')){
+    const b = $('accSignIn').querySelector('b');
+    if (b) b.textContent = approved ? 'Account' : 'Request access';
+  }
   const sel = $('textFont');
   if (sel){
     [...sel.options].forEach(o=>{
-      const proOnly = o.dataset.pro === '1';
       const allowed = AuthService.canUseFont(o.value);
-      o.disabled = proOnly && !allowed;
+      o.disabled = !allowed;
       o.hidden = false;
     });
   }
-  // turntable menu hint already has Pro pill
 }
 
 
@@ -1202,64 +1218,148 @@ document.addEventListener('click', e=>{ if(!e.target.closest('.menuwrap')){ $('e
 document.querySelectorAll('[data-exp]').forEach(b=>b.onclick = ()=>{ $('exportMenu').hidden = true; EXPORTS[b.dataset.exp]().catch(err=>{ console.error(err); toast('Export failed: '+err.message); }); });
 $('snap').onclick = async ()=>{ const r = await capture3dPng({mode:'catalogue'}); showModal({img:URL.createObjectURL(r.blob), blob:r.blob, name:'3d-snapshot.png', txt:r.txt}); };
 
-// ---------- SaaS UI: landing, auth, pricing, designs ----------
-let authMode = 'in';
-function openLanding(){ $('landing').hidden = false; }
-function closeLanding(){ $('landing').hidden = true; try{ sessionStorage.setItem('fb-entered','1'); }catch(_){} }
-function openAuth(mode){
-  authMode = mode || 'in';
-  $('authModal').hidden = false;
-  $('authError').textContent = '';
-  $('authTabIn').setAttribute('aria-pressed', authMode==='in');
-  $('authTabUp').setAttribute('aria-pressed', authMode==='up');
-  $('authTitle').textContent = authMode==='up' ? 'Create account' : 'Sign in';
-  $('authName').parentElement.hidden = authMode!=='up';
-  $('authCodeRow').hidden = authMode!=='up';
-  $('authPass').autocomplete = authMode==='up' ? 'new-password' : 'current-password';
+// ---------- Invite gate, account, (hidden) pricing, designs ----------
+let gateMode = 'request';
+
+function openLanding(){ $('landing').hidden = false; syncGateView(); }
+function closeLanding(){
+  if (!AuthService.isApproved()){ openLanding(); return; }
+  $('landing').hidden = true;
 }
-function closeAuth(){ $('authModal').hidden = true; }
-function openPricing(){ $('pricingModal').hidden = false; $('paySoon').hidden = true; }
+function openAuth(){ openLanding(); setGateMode('login'); }
+function closeAuth(){ if ($('authModal')) $('authModal').hidden = true; }
+function openPricing(){
+  if (!AuthService.PAYMENTS_VISIBLE){ toast('Access is invite-only for now. Currently free — pricing may change later.'); return; }
+  $('pricingModal').hidden = false;
+  if ($('paySoon')) $('paySoon').hidden = true;
+}
 function closePricing(){ $('pricingModal').hidden = true; }
 
-$('landingOpen').onclick = ()=> closeLanding();
-$('pickFree').onclick = ()=> closeLanding();
-$('landingAuth').onclick = ()=> openAuth('up');
-$('pickPro').onclick = ()=>{ closeLanding(); if (!AuthService.getUser()) openAuth('up'); else openPricing(); };
+function setGateMode(mode){
+  gateMode = mode === 'login' ? 'login' : 'request';
+  if ($('gateTabRequest')) $('gateTabRequest').setAttribute('aria-pressed', gateMode==='request');
+  if ($('gateTabLogin')) $('gateTabLogin').setAttribute('aria-pressed', gateMode==='login');
+  if ($('gateNameRow')) $('gateNameRow').hidden = gateMode!=='request';
+  if ($('gateSubmit')) $('gateSubmit').textContent = gateMode==='request' ? 'Send request · שליחת בקשה' : 'Continue · כניסה';
+  if ($('gateError')) $('gateError').textContent = '';
+}
 
-$('upgradeBtn').onclick = ()=> openPricing();
+function showGatePanel(which){
+  const form = $('gateForm'), pend = $('gatePending'), rej = $('gateRejected'), tabs = $('gateTabs');
+  if (form) form.hidden = which !== 'form';
+  if (tabs) tabs.hidden = which !== 'form';
+  if (pend) pend.hidden = which !== 'pending';
+  if (rej) rej.hidden = which !== 'rejected';
+}
+
+function syncGateView(){
+  const u = AuthService.getUser();
+  if (AuthService.isApproved()){ $('landing').hidden = true; return; }
+  $('landing').hidden = false;
+  if (u?.status === 'pending'){
+    if ($('gatePendingEmail')) $('gatePendingEmail').textContent = u.email;
+    showGatePanel('pending');
+  } else if (u?.status === 'rejected'){
+    showGatePanel('rejected');
+  } else {
+    showGatePanel('form');
+    if (u?.email && $('gateEmail') && !$('gateEmail').value) $('gateEmail').value = u.email;
+  }
+}
+
+async function enterIfApproved(){
+  refreshPlanUI();
+  if (AuthService.isApproved()){
+    closeLanding();
+    toast('Welcome — you’re in');
+    return true;
+  }
+  syncGateView();
+  return false;
+}
+
+$('gateTabRequest') && ($('gateTabRequest').onclick = ()=>{ showGatePanel('form'); setGateMode('request'); });
+$('gateTabLogin') && ($('gateTabLogin').onclick = ()=>{ showGatePanel('form'); setGateMode('login'); });
+$('landingOpen') && ($('landingOpen').onclick = ()=> closeLanding());
+$('pickFree') && ($('pickFree').onclick = ()=> closeLanding());
+$('landingAuth') && ($('landingAuth').onclick = ()=> setGateMode('login'));
+$('pickPro') && ($('pickPro').onclick = ()=> openPricing());
+
+$('upgradeBtn') && ($('upgradeBtn').onclick = ()=> openPricing());
 $('accountBtn').onclick = e=>{ e.stopPropagation(); const m=$('accountMenu'); m.hidden = !m.hidden; $('accountBtn').setAttribute('aria-expanded', !m.hidden); $('exportMenu').hidden = true; };
-$('accSignIn').onclick = ()=>{ $('accountMenu').hidden = true; openAuth(AuthService.getUser()?'in':'up'); };
-$('accPricing').onclick = ()=>{ $('accountMenu').hidden = true; openPricing(); };
-$('accLogout').onclick = ()=>{ AuthService.logout(); refreshPlanUI(); toast('Logged out'); $('accountMenu').hidden = true; };
+$('accSignIn').onclick = ()=>{ $('accountMenu').hidden = true; if (AuthService.isApproved()) toast(AuthService.getUser().email); else openLanding(); };
+$('accPricing') && ($('accPricing').onclick = ()=>{ $('accountMenu').hidden = true; openPricing(); });
+$('accLogout').onclick = ()=>{ AuthService.logout(); refreshPlanUI(); openLanding(); toast('Logged out'); $('accountMenu').hidden = true; };
 $('accDesigns').onclick = ()=>{ $('accountMenu').hidden = true; openDesigns(); };
 
-$('authTabIn').onclick = ()=> openAuth('in');
-$('authTabUp').onclick = ()=> openAuth('up');
-$('authCancel').onclick = ()=> closeAuth();
-$('authSubmit').onclick = async ()=>{
+$('gateForm') && ($('gateForm').onsubmit = async ev=>{
+  ev.preventDefault();
+  if ($('gateError')) $('gateError').textContent = '';
+  const email = $('gateEmail').value;
+  const name = $('gateName') ? $('gateName').value : '';
+  const btn = $('gateSubmit');
+  if (btn) btn.disabled = true;
+  try {
+    if (gateMode === 'login'){
+      try {
+        await AuthService.login({ email });
+        await enterIfApproved();
+      } catch (err) {
+        if (err.code === 'pending'){ syncGateView(); return; }
+        if (err.code === 'rejected'){ syncGateView(); return; }
+        throw err;
+      }
+    } else {
+      await AuthService.requestAccess({ email, name });
+      if (!(await enterIfApproved())){
+        if (AuthService.getUser()?.status === 'pending'){
+          toast('Request sent — waiting for approval');
+        }
+      }
+    }
+  } catch (err) {
+    if ($('gateError')) $('gateError').textContent = err.message;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+});
+$('gateCheckAgain') && ($('gateCheckAgain').onclick = async ()=>{
+  try {
+    const email = AuthService.getUser()?.email || $('gateEmail').value;
+    await AuthService.login({ email });
+    await enterIfApproved();
+  } catch (err) {
+    if (err.code === 'pending'){ toast('Still pending / עדיין ממתין לאישור'); syncGateView(); }
+    else if (err.code === 'rejected') syncGateView();
+    else if ($('gateError')) { showGatePanel('form'); $('gateError').textContent = err.message; }
+  }
+});
+$('gateTryAgain') && ($('gateTryAgain').onclick = ()=>{
+  const email = AuthService.getUser()?.email || '';
+  AuthService.logout();
+  showGatePanel('form');
+  setGateMode('request');
+  if ($('gateEmail') && email) $('gateEmail').value = email;
+});
+
+// Legacy auth modal (kept in DOM, unused in invite mode)
+if ($('authTabIn')) $('authTabIn').onclick = ()=> setGateMode('login');
+if ($('authTabUp')) $('authTabUp').onclick = ()=> setGateMode('request');
+if ($('authCancel')) $('authCancel').onclick = ()=> closeAuth();
+if ($('authSubmit')) $('authSubmit').onclick = async ()=>{
   $('authError').textContent = '';
   try {
-    if (authMode==='up') await AuthService.signup({email:$('authEmail').value, password:$('authPass').value, name:$('authName').value, inviteCode:$('authCode').value});
-    else await AuthService.login({email:$('authEmail').value, password:$('authPass').value});
-    refreshPlanUI(); closeAuth(); closeLanding();
-    toast(AuthService.getPlan().id==='pro' ? 'Welcome — Pro unlocked' : 'Signed in · Free plan');
+    await AuthService.requestAccess({email:$('authEmail').value, name:$('authName').value});
+    closeAuth();
+    await enterIfApproved();
   } catch(err){ $('authError').textContent = err.message; }
 };
-$('pricingClose').onclick = ()=> closePricing();
-$('subscribeBtn').onclick = ()=>{ $('paySoon').hidden = false; toast('Payments coming soon'); };
-$('redeemBtn').onclick = ()=>{
-  try {
-    if (!AuthService.getUser()){ closePricing(); openAuth('up'); toast('Sign up first, then redeem the code'); return; }
-    AuthService.redeemCode($('redeemCode').value);
-    refreshPlanUI(); closePricing(); toast('Pro activated with access code');
-  } catch(err){ toast(err.message); }
-};
+if ($('pricingClose')) $('pricingClose').onclick = ()=> closePricing();
+if ($('subscribeBtn')) $('subscribeBtn').onclick = ()=>{ $('paySoon').hidden = false; toast('Payments coming later'); };
+if ($('redeemBtn')) $('redeemBtn').onclick = ()=> toast('Access is invite-only for now');
 
 function openDesigns(){
-  if (!requirePro('Multiple saved designs') && plan().maxDesigns<=1){
-    // requirePro already opened pricing; still allow viewing single save message
-  }
-  if (plan().id !== 'pro'){ openPricing(); return; }
+  if (!AuthService.isApproved()){ openLanding(); return; }
   $('designsModal').hidden = false;
   renderDesignsList();
 }
@@ -1288,9 +1388,44 @@ $('designSaveAs').onclick = async ()=>{
   } catch(err){ toast(err.message); }
 };
 
-AuthService.onChange(()=> refreshPlanUI());
+
+async function handleDecideLink(){
+  const m = String(location.hash||'').match(/^#decide\/(approve|reject)\/([0-9a-f]{32,})$/i);
+  if (!m) return;
+  try { history.replaceState(null, '', location.pathname + location.search); } catch(_){}
+  try {
+    const res = await fetch(AuthService.SUPABASE_URL + '/functions/v1/decide', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'Accept':'application/json' },
+      body: JSON.stringify({ token: m[2], action: m[1].toLowerCase() }),
+    });
+    const data = await res.json().catch(()=>({}));
+    const approved = data.status === 'approved';
+    const who = data.name ? `${data.name} (${data.email||''})` : (data.email || '');
+    if ($('decideTitle')) $('decideTitle').textContent = approved ? 'Access approved' : (data.ok ? 'Request declined' : 'Could not update this request');
+    if ($('decideBody')) $('decideBody').textContent = approved
+      ? `${who} can now enter Fashion Builder with this email.`
+      : (data.ok ? `${who} will see a short message if they check their status.` : (data.error || 'Please try the link again.'));
+    if ($('decideBodyHe')) $('decideBodyHe').textContent = approved
+      ? `${who} יכול/ה להיכנס עכשיו עם אותו אימייל.`
+      : (data.ok ? `הבקשה של ${who} נדחתה.` : 'לא ניתן לעדכן את הבקשה.');
+    if ($('decideModal')) $('decideModal').hidden = false;
+  } catch (err) {
+    if ($('decideTitle')) $('decideTitle').textContent = 'Could not update this request';
+    if ($('decideBody')) $('decideBody').textContent = err.message || 'Network error';
+    if ($('decideModal')) $('decideModal').hidden = false;
+  }
+}
+$('decideClose') && ($('decideClose').onclick = ()=> { $('decideModal').hidden = true; });
+
+AuthService.onChange(()=> { refreshPlanUI(); if (!AuthService.isApproved()) openLanding(); });
 refreshPlanUI();
-try { if (!sessionStorage.getItem('fb-entered')) openLanding(); } catch(_){ openLanding(); }
+setGateMode('request');
+try { await AuthService.init(); } catch(_){}
+refreshPlanUI();
+if (AuthService.isApproved()) $('landing').hidden = true;
+else openLanding();
+await handleDecideLink();
 
 
 
@@ -1314,6 +1449,7 @@ FONT_LIST.slice(8).forEach(f=>ensureFont(f));
 setFabric(S.fabric); setBg(S.bg); applyMaterial(); renderLayers(); resizeGL(); resizePattern(); commit(); loop();
 try {
   window.__FB = {
+    grantLocalTestAccess: (email) => { AuthService.grantLocalTestAccess(email); refreshPlanUI(); closeLanding(); },
     getS: () => S, getLayers: () => S.layers, pieceById, pieces: () => pieces, SHOWN: () => SHOWN,
     TEX, PX, BRUSH, PV, pieceAt, fromDisplay, toView, toSheet, hitLayer, composeSheet, select, addText, ensureBrushLayer,
     setBrushMode, moveLayerToPiece, stampBrush, commit, renderLayers, rebuildText, fitPattern,
