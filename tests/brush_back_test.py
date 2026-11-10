@@ -24,16 +24,14 @@ def main():
 
         page.goto(BASE + '/?t=' + str(int(time.time()*1000)), wait_until='networkidle', timeout=120000)
         html = page.content()
-        assert_('FB-INVITE-V1' in html, 'missing FB-INVITE-V1 marker')
+        assert_('FB-OPEN-V1' in html, 'missing FB-OPEN-V1 marker')
 
         page.wait_for_selector('#loading', state='hidden', timeout=120000)
-        page.wait_for_function('() => window.__FB && window.__FB.grantLocalTestAccess', timeout=30000)
-        page.evaluate('() => window.__FB.grantLocalTestAccess()')
+        page.wait_for_function('() => window.__FB && window.AuthService', timeout=30000)
         page.wait_for_selector('#landing', state='hidden', timeout=10000)
         page.wait_for_timeout(400)
-
-        badge = page.locator('#planBadge').inner_text().strip().lower()
-        assert_('invited' in badge, f'expected Invited, got {badge}')
+        plan = page.evaluate('() => AuthService.getPlan().id')
+        assert_(plan == 'pro', f'expected pro plan with gate off, got {plan}')
 
         # --- Place text on BACK via API (UV coords) then verify piece label ---
         info = page.evaluate('''() => {

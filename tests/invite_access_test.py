@@ -159,6 +159,11 @@ if __name__ == '__main__':
     if len(sys.argv) > 1:
         phase = sys.argv[1].lstrip('-')
     try:
+        import urllib.request
+        html = urllib.request.urlopen(BASE + '/', timeout=10).read().decode('utf-8', 'replace')
+        if 'const ACCESS_GATE = false' in html:
+            print('SKIP invite_access_test: ACCESS_GATE is off (FB-OPEN-V1). Re-enable the flag to run this suite.')
+            sys.exit(0)
         if phase == 'finish':
             phase_finish()
         else:

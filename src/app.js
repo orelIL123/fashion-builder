@@ -70,8 +70,9 @@ function refreshPlanUI(){
   const st = AuthService.getState();
   const badge = $('planBadge');
   const approved = AuthService.isApproved();
+  const gated = !!AuthService.ACCESS_GATE;
   if (badge){
-    badge.hidden = !approved;
+    badge.hidden = !gated || !approved;
     badge.textContent = approved ? 'Invited' : (st.plan.name || '');
     badge.classList.toggle('pro', approved);
   }
@@ -79,7 +80,8 @@ function refreshPlanUI(){
   if ($('accPricing')) $('accPricing').hidden = !AuthService.PAYMENTS_VISIBLE;
   if ($('landingPricing')) $('landingPricing').hidden = !AuthService.PAYMENTS_VISIBLE;
   const logged = !!st.user;
-  if ($('accLogout')) $('accLogout').hidden = !approved;
+  if ($('accSignIn')) $('accSignIn').hidden = !gated;
+  if ($('accLogout')) $('accLogout').hidden = !gated || !approved;
   if ($('accEmailHint')) $('accEmailHint').textContent = st.user ? st.user.email : '';
   if ($('accSignIn')){
     const b = $('accSignIn').querySelector('b');
@@ -1355,9 +1357,12 @@ $('snap').onclick = async ()=>{ const r = await capture3dPng({mode:'catalogue'})
 // ---------- Invite gate, account, (hidden) pricing, designs ----------
 let gateMode = 'request';
 
-function openLanding(){ $('landing').hidden = false; syncGateView(); }
+function openLanding(){
+  if (!AuthService.ACCESS_GATE){ $('landing').hidden = true; return; }
+  $('landing').hidden = false; syncGateView();
+}
 function closeLanding(){
-  if (!AuthService.isApproved()){ openLanding(); return; }
+  if (AuthService.ACCESS_GATE && !AuthService.isApproved()){ openLanding(); return; }
   $('landing').hidden = true;
 }
 function openAuth(){ openLanding(); setGateMode('login'); }
@@ -1388,7 +1393,7 @@ function showGatePanel(which){
 
 function syncGateView(){
   const u = AuthService.getUser();
-  if (AuthService.isApproved()){ $('landing').hidden = true; return; }
+  if (!AuthService.ACCESS_GATE || AuthService.isApproved()){ $('landing').hidden = true; return; }
   $('landing').hidden = false;
   if (u?.status === 'pending'){
     if ($('gatePendingEmail')) $('gatePendingEmail').textContent = u.email;
@@ -1742,16 +1747,17 @@ $('scPng').onclick = async ()=> download(await canvasBlob(scPngCanvas()), `size-
 $('scCopy').onclick = async ()=>{ scEnsure(); const tsv = [['Code','Point of measure', ...SIZES, 'Tol ±','Grade'], ...SC.rows.map((R,i)=>[R.c, POMS[i].n, ...R.v.map(scFmt), scFmt(R.tol), scFmt(R.grade)])].map(r=>r.join('\t')).join('\n');
   try { await navigator.clipboard.writeText(tsv); toast('Copied — paste into Excel or Google Sheets'); } catch(_){ toast('Could not copy. Use Download CSV instead.'); } };
 
-AuthService.onChange(()=> { refreshPlanUI(); if (!AuthService.isApproved()) openLanding(); });
+AuthService.onChange(()=> { refreshPlanUI(); if (AuthService.ACCESS_GATE && !AuthService.isApproved()) openLanding(); });
 refreshPlanUI();
 setGateMode('request');
 // The editor boots immediately; the server-side access check runs in parallel (it used to block the first frame).
-if (AuthService.getUser()?.status === 'approved') $('landing').classList.add('checking');
+if (AuthService.ACCESS_GATE && AuthService.getUser()?.status === 'approved') $('landing').classList.add('checking');
+if (!AuthService.ACCESS_GATE) $('landing').hidden = true;
 (async ()=>{
   try { await AuthService.init(); } catch(_){}
   $('landing').classList.remove('checking');
   refreshPlanUI();
-  if (AuthService.isApproved()) $('landing').hidden = true; else openLanding();
+  if (!AuthService.ACCESS_GATE || AuthService.isApproved()) $('landing').hidden = true; else openLanding();
   await handleDecideLink();
 })();
 

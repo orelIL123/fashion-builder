@@ -6,7 +6,7 @@
 <script>/* start the garment download before the app module is even parsed */(function(){var g=new URLSearchParams(location.search).get('g');var l=document.createElement('link');l.rel='preload';l.as='fetch';l.crossOrigin='anonymous';l.href=g==='oversized'?'assets/fb/shirt.glb':'assets/shirt.glb';document.head.appendChild(l);})();</script>
 <link rel="stylesheet" id="fontCss" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Alfa+Slab+One&family=Anton&family=Archivo+Black&family=Assistant:wght@400;700&family=Bangers&family=Barlow+Condensed:wght@700&family=Bebas+Neue&family=Black+Ops+One&family=Caveat:wght@600&family=Courier+Prime&family=DM+Serif+Display&family=Familjen+Grotesk:wght@400;500;600;700&family=Frank+Ruhl+Libre:wght@400;700&family=Heebo:wght@400;700&family=Indie+Flower&family=JetBrains+Mono:wght@400;500&family=Karantina:wght@400;700&family=Lobster&family=Lora:wght@600&family=Merriweather:wght@700&family=Montserrat:wght@600;800&family=Oswald:wght@500;700&family=Pacifico&family=Permanent+Marker&family=Playfair+Display:wght@700&family=Poppins:wght@600;800&family=Press+Start+2P&family=Righteous&family=Roboto:wght@400;700&family=Rubik:wght@400;700&family=Secular+One&family=Space+Mono&family=Suez+One&family=Teko:wght@600&family=Varela+Round&display=swap">
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Alfa+Slab+One&family=Anton&family=Archivo+Black&family=Assistant:wght@400;700&family=Bangers&family=Barlow+Condensed:wght@700&family=Bebas+Neue&family=Black+Ops+One&family=Caveat:wght@600&family=Courier+Prime&family=DM+Serif+Display&family=Familjen+Grotesk:wght@400;500;600;700&family=Frank+Ruhl+Libre:wght@400;700&family=Heebo:wght@400;700&family=Indie+Flower&family=JetBrains+Mono:wght@400;500&family=Karantina:wght@400;700&family=Lobster&family=Lora:wght@600&family=Merriweather:wght@700&family=Montserrat:wght@600;800&family=Oswald:wght@500;700&family=Pacifico&family=Permanent+Marker&family=Playfair+Display:wght@700&family=Poppins:wght@600;800&family=Press+Start+2P&family=Righteous&family=Roboto:wght@400;700&family=Rubik:wght@400;700&family=Secular+One&family=Space+Mono&family=Suez+One&family=Teko:wght@600&family=Varela+Round&display=swap"></noscript>
-<!-- FB-INVITE-V1 -->
+<!-- FB-OPEN-V1 -->
 <style>
 /* Layout: tailor's cutting table — tool rail top, two work surfaces (pattern sheet | 3D fitting), spec panel right. Single dark workshop look by choice. */
 :root{
@@ -26,6 +26,7 @@ header{display:flex;align-items:center;gap:12px;padding:8px max(16px,env(safe-ar
 .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.01em;font-size:16px}
 .brand svg{flex:none}
 .brand small{font-family:var(--f-mono);font-weight:400;color:var(--muted);font-size:11px}
+.free-note-hdr{font-family:var(--f-mono);font-weight:400;color:var(--muted);font-size:11px;line-height:1.35;max-width:36ch;flex:1 1 180px;min-width:0}
 .seg{display:inline-flex;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:2px}
 .seg button{border:0;background:none;padding:6px 12px;border-radius:6px;cursor:pointer;color:var(--muted);font-weight:500}
 .seg button[aria-pressed="true"]{background:var(--raise);color:var(--text)}
@@ -246,6 +247,7 @@ label.field{grid-template-columns:96px 1fr 48px}
     <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M8 3 3 6.5l2.6 4.2L8 9.6V23h10V9.6l2.4 1.1L23 6.5 18 3c-.9 1.9-2.8 3-5 3s-4.1-1.1-5-3Z" fill="none" stroke="#f2c14e" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 17h10" stroke="#f2c14e" stroke-width="1.2" stroke-dasharray="1.6 1.4"/></svg>
     <span>Fashion Builder</span><small class="hide-s" id="garmentName">Raglan tee</small>
   </div>
+  <span class="free-note-hdr" id="freeNote">Currently free — pricing may change at any time / <span dir="rtl">כרגע חינם — ייתכנו שינויים בכל עת</span></span>
   <div class="seg" role="group" aria-label="View">
     <button id="vPattern" aria-pressed="false">Sewing pattern</button>
     <button id="vSplit" aria-pressed="true">Split</button>
@@ -483,7 +485,7 @@ label.field{grid-template-columns:96px 1fr 48px}
 <div class="modal" id="modal" hidden><div class="card"><img id="modalImg" alt="Export preview"><video id="modalVid" controls loop muted playsinline hidden style="max-width:100%;max-height:70vh;border-radius:8px"></video><p id="modalTxt">Right-click the image and choose Save Image As.</p><div class="row"><button class="btn primary" id="modalDl">Download PNG</button><button class="btn" id="modalClose">Close</button></div></div></div>
 
 
-<div class="landing" id="landing">
+<div class="landing" id="landing" hidden>
   <div class="landing-inner landing-gate">
     <div class="landing-hero">
       <div class="brand" style="justify-content:center;font-size:18px">

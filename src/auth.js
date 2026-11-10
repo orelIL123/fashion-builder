@@ -1,5 +1,6 @@
 /* Fashion Builder — invite-only access (Supabase) + plan helpers.
- * Approval is stored server-side. The client caches only the email and re-checks status on load.
+ * ACCESS_GATE=false: the editor opens for everyone with Pro-equivalent features. Set true to require approval again.
+ * Approval is stored server-side. The client caches only the email and re-checks status on load when the gate is on.
  * Pricing UI is hidden for now (PAYMENTS_VISIBLE=false); plan limits stay so a paid plan can return later.
  */
 const AuthService = (() => {
@@ -12,6 +13,9 @@ const AuthService = (() => {
 
   /** Paid plan UI is hidden while access is invite-only. Planned later: ~₪30/mo. */
   const PAYMENTS_VISIBLE = false;
+
+  /** Set true to require email approval again. Invite/Supabase code below stays intact. */
+  const ACCESS_GATE = false;
 
   /** Kept for when pricing returns. */
   const ACCESS_CODES = {
@@ -97,9 +101,13 @@ const AuthService = (() => {
     return { email: session.email, name: session.name || '', status: session.status || null };
   }
 
-  function isApproved() { return verified && session?.status === 'approved'; }
+  function isApproved() {
+    if (!ACCESS_GATE) return true;
+    return verified && session?.status === 'approved';
+  }
 
   function getPlan() {
+    if (!ACCESS_GATE) return PLANS.pro;
     return PLANS[isApproved() ? 'pro' : 'free'];
   }
 
@@ -161,6 +169,11 @@ const AuthService = (() => {
   }
 
   async function refreshSession() {
+    if (!ACCESS_GATE) {
+      /* Ignore stale invite sessions so a leftover pending/rejected key cannot show the gate. */
+      verified = true;
+      return getState();
+    }
     verified = false;
     if (!session?.email) { verified = true; return getState(); }
     try {
@@ -241,7 +254,7 @@ const AuthService = (() => {
   }
 
   return {
-    PLANS, ACCESS_CODES, PAYMENTS_VISIBLE, SUPABASE_URL,
+    PLANS, ACCESS_CODES, PAYMENTS_VISIBLE, ACCESS_GATE, SUPABASE_URL,
     getState, getUser, getPlan, isApproved,
     requestAccess, checkStatus, login, logout, refreshSession, init,
     signup, redeemCode, setPlanDemo,

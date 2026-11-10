@@ -26,17 +26,18 @@ def main():
 
         page.goto(BASE + '/?t=' + str(int(time.time()*1000)), wait_until='networkidle', timeout=120000)
         html = page.content()
-        assert_('FB-INVITE-V1' in html, 'missing FB-INVITE-V1 marker')
+        assert_('FB-OPEN-V1' in html, 'missing FB-OPEN-V1 marker')
 
         page.wait_for_selector('#loading', state='hidden', timeout=120000)
-        page.wait_for_function('() => window.__FB && window.__FB.grantLocalTestAccess', timeout=30000)
-        page.evaluate('() => window.__FB.grantLocalTestAccess()')
+        page.wait_for_function('() => window.__FB && window.AuthService', timeout=30000)
         page.wait_for_selector('#landing', state='hidden', timeout=10000)
         page.wait_for_timeout(400)
 
-        badge = page.locator('#planBadge').inner_text().strip()
-        assert_('invited' in badge.lower(), f'expected Invited badge, got {badge}')
-        email = 'local-test@example.com'
+        plan = page.evaluate('() => AuthService.getPlan().id')
+        assert_(plan == 'pro', f'expected pro plan with gate off, got {plan}')
+        assert_(page.evaluate('() => !AuthService.needsWatermark() && AuthService.canExportVideo()'), 'expected no watermark + video export')
+        email = 'open-access@example.com'
+        badge = 'pro (gate off)'
 
         # Invited users can add layers (no cap) and should not see pricing
         page.click('#addText')
@@ -87,8 +88,8 @@ def main():
         assert_(len(cat_buf) > 2000, 'catalogue png too small')
         page.click('#modalClose')
 
-        badge2 = page.locator('#planBadge').inner_text().strip()
-        assert_('invited' in badge2.lower(), f'expected Invited badge, got {badge2}')
+        badge2 = page.evaluate('() => AuthService.getPlan().id')
+        assert_(badge2 == 'pro', f'expected pro plan still, got {badge2}')
         layer_count2 = layer_count
 
         # Turntable video download

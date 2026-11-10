@@ -4,7 +4,7 @@ A garment editor in the browser: a sewing-pattern sheet and a live 3D shirt side
 
 **Live:** https://orelil123.github.io/fashion-builder/
 
-Marker: `FB-INVITE-V1` (in page source).
+Marker: `FB-OPEN-V1` (in page source).
 
 ## Features
 
@@ -17,12 +17,14 @@ Marker: `FB-INVITE-V1` (in page source).
 - **Garments:** a garment picker on the 3D pane (`?g=<id>`), driven by a small registry in `src/app.js`
 - **Design:** image and text layers on the **2D pattern map** (and 3D), click-to-place, opacity, flip, rotate handle, lock/duplicate/reorder, 35 fonts (incl. Hebrew), inside prints (neck label), solid or gradient fabric colour, rib colour, washes, save/load in browser
 - **Export:** 3D PNG (catalogue / dark / transparent), 2D pattern PNG + SVG, print files (ZIP), sublimation panels, spec sheet, **360° turntable video (~5s WebM/MP4)** (Pro)
-- **Access:** Invite-only. Request access with an email; Orel approves or rejects from a notification email. Approved users get the full editor (all fonts, no watermark, video, up to 50 saved designs). **Currently free — pricing may change at any time.**
+- **Access:** Currently open to everyone, with full editor features (all fonts, no watermark, video, up to 50 saved designs). A small header note says **Currently free — pricing may change at any time / כרגע חינם — ייתכנו שינויים בכל עת**. Invite-only code is kept behind `ACCESS_GATE` in `src/auth.js` (set to `true` to require approval again).
 
 Turntable video is recorded in-browser (2D mirror of the WebGL canvas + `captureStream(0)` / `requestFrame`). Some browsers omit duration metadata on the WebM; the file still plays.
 
 ## Invite-only access
-The editor is gated until a request is **approved server-side** (not just in `localStorage`).
+**Currently off.** `ACCESS_GATE` in `src/auth.js` is `false`, so the editor opens immediately with Pro-equivalent features and ignores any stale invite session in `localStorage`. Set it to `true` and rebuild to require approval again.
+
+When the gate is on, the editor is blocked until a request is **approved server-side** (not just in `localStorage`).
 
 1. A visitor enters their email (name optional) on **Request access / בקשת גישה**.
 2. Edge Function `request-access` inserts a `pending` row and notifies `orel895@gmail.com` via [FormSubmit.co](https://formsubmit.co) with **Approve** and **Reject** links.
@@ -74,7 +76,7 @@ Rebuild after edits: `python3 src/build.py` (bundles `auth.js` + `app.js` into `
 | `assets/vendor/` | three.js r170 bundle (MIT) and JSZip (MIT / GPLv3) |
 | `src/vendor/` | entry file + script that rebuild the three.js bundle |
 | `tests/` | Playwright checks (`speed_coverage_sizechart_test.py` covers speed, dead zones and the size chart) |
-| `src/auth.js` | Invite-only AuthService (Supabase functions) + plan helpers |
+| `src/auth.js` | AuthService (plans + optional invite gate via `ACCESS_GATE`) |
 | `src/app.js`, `src/index.src.html`, `src/build.py` | edit here, then `python3 src/build.py` |
 | `blender/` | Blender pipeline |
 
@@ -86,4 +88,4 @@ python3 -m http.server 8765   # then open http://localhost:8765
 
 
 ### Build marker
-`FB-INVITE-V1` — invite-only access (request / approve / reject).
+`FB-OPEN-V1` — editor is open to everyone; invite gate is off (`ACCESS_GATE=false`).
