@@ -225,8 +225,16 @@ function addBrushLayer(o={}){
   S.layers.push(L); return L;
 }
 function ensureBrushLayer(inside){
-  let L = [...S.layers].reverse().find(l=>l.kind==='brush' && !!l.inside===!!inside && l.visible && !l.locked);
+  // Paint must land ABOVE whatever is on the garment: reuse a brush layer only if no photo/text of this side sits on top
+  // of it (painting used to go into an older brush layer hidden underneath a newly added image). The eraser keeps the
+  // selected / topmost brush layer, since it only makes sense on existing paint.
+  const side = S.layers.filter(l=>!!l.inside===!!inside && l.visible);
+  const sel = cur();
+  let L = null;
+  if (BRUSH.eraser) L = (sel && sel.kind==='brush' && !!sel.inside===!!inside && !sel.locked) ? sel : [...side].reverse().find(l=>l.kind==='brush' && !l.locked);
+  else { const top = side.at(-1); if (top && top.kind==='brush' && !top.locked) L = top; }
   if (L) return L;
+  if (BRUSH.eraser){ toast('Nothing to erase — the eraser works on brush paint'); return null; }
   if (!ensureLayerRoom()) return null;
   L = addBrushLayer({inside:!!inside});
   select(L.id); renderLayers();
@@ -280,12 +288,12 @@ function moveLayerToPiece(L, pieceId){
 // ---------- undo / redo ----------
 const hist = [], fut = [];
 const snapshot = () => JSON.stringify({...S, layers:S.layers.map(l=>{
-  const base = {...l, src:undefined, thumb:undefined, _url:undefined, _urlRev:undefined, _rotHandle:undefined, _k:l.id};
+  const base = {...l, src:undefined, orig:undefined, thumb:undefined, _url:undefined, _urlRev:undefined, _rotHandle:undefined, _k:l.id};
   if (l.kind==='brush' && l.src){ try { if (l._urlRev !== (l.rev|0) || !l._url){ l._url = l.src.toDataURL('image/png'); l._urlRev = l.rev|0; } base._dataUrl = l._url; } catch(_){ base._dataUrl = null; } }
   return base;
 })});
-const srcById = new Map();
-function commit(){ S.layers.forEach(l=>srcById.set(l.id+':'+(l.kind==='text'?l.text+l.font+l.color:''), l.src));
+const srcById = new Map(), origById = new Map();
+function commit(){ S.layers.forEach(l=>{ if (l.orig) origById.set(l.id+':r'+(l.rev|0), l.orig); }); S.layers.forEach(l=>srcById.set(l.id+':'+(l.kind==='text'?l.text+l.font+l.color:'r'+(l.rev|0)), l.src));
   const s = snapshot(); if (hist.at(-1) !== s){ hist.push(s); if(hist.length>80) hist.shift(); fut.length = 0; } updUndo(); }
 function restore(s){ const o = JSON.parse(s); const oldMap = new Map(S.layers.map(l=>[l.id,l]));
   Object.assign(S, o); S.layers = o.layers.map(l=>{ const prev = oldMap.get(l.id); const L = {...l}; delete L._dataUrl; delete L._k;
@@ -303,7 +311,7 @@ function restore(s){ const o = JSON.parse(s); const oldMap = new Map(S.layers.ma
       } else if (prev && prev.src && prev.kind==='brush'){ c.getContext('2d').drawImage(prev.src,0,0); }
       L.src = c; L.aspect = 1; L._lastUrl = l._dataUrl || null;
     }
-    else L.src = (prev && prev.src) || srcById.get(L.id+':'); return L; });
+    else { L.src = srcById.get(L.id+':r'+(L.rev|0)) || (prev && prev.src); L.orig = origById.get(L.id+':r'+(L.rev|0)) || null; if (L.src) L.aspect = (L.src.naturalHeight||L.src.height)/(L.src.naturalWidth||L.src.width) || L.aspect; } return L; });
   syncAllUI(); composeSheet(); renderLayers(); }
 function updUndo(){ $('undo').disabled = hist.length<2; $('redo').disabled = !fut.length; }
 $('undo').onclick = ()=>{ if(hist.length<2) return; fut.push(hist.pop()); restore(hist.at(-1)); updUndo(); };
@@ -912,6 +920,7 @@ function renderLayers(){
 function syncLayerUI(){
   const L = cur(); $('layerEdit').hidden = !L; $('layerTools').hidden = !L; if(!L) return;
   $('textEdit').hidden = L.kind!=='text'; $('imgEdit').hidden = L.kind!=='image';
+  if (L.kind==='image'){ $('bgRestore').hidden = !L.orig; $('bgTolRow').hidden = !L.orig; $('bgRemove').textContent = L.orig ? 'Background removed ✓' : 'Remove background'; $('bgRemove').disabled = !!L.orig; if (L.orig && L.bgTol){ $('bgTol').value = L.bgTol; $('bgTolO').textContent = L.bgTol; } }
   const isBrush = L.kind==='brush';
   if ($('lw')) $('lw').parentElement.hidden = isBrush;
   if ($('lr')) $('lr').parentElement.hidden = isBrush;
@@ -942,6 +951,43 @@ $('lr').oninput = e=>{ const L=cur(); if(!L||L.locked) return; L.rot = +e.target
 $('lop').oninput = e=>{ const L=cur(); if(!L||L.locked) return; L.opacity = +e.target.value/100; composeSheet(); syncLayerUI(); }; $('lop').onchange = commit;
 $('lInside').onchange = e=>{ const L=cur(); if(!L||L.locked) return; L.inside = e.target.checked; select(L.id); composeSheet(); renderLayers(); commit(); };
 $('flipH').onclick = ()=>{ const L=cur(); if(!L||L.locked) return; L.flipX = !L.flipX; composeSheet(); renderLayers(); commit(); };
+// ---------- remove image background ----------
+// Runs in the browser, nothing is uploaded: the background is whatever is connected to the image border and close to
+// the border's dominant colours. Great for logos / product shots on a plain backdrop; busy photos need a real cut-out.
+function removeBackground(img, tol){
+  const w0 = img.naturalWidth || img.width, h0 = img.naturalHeight || img.height, k = Math.min(1, 2200/Math.max(w0,h0));
+  const w = Math.max(1, Math.round(w0*k)), h = Math.max(1, Math.round(h0*k));
+  const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d', {willReadFrequently:true}); g.drawImage(img,0,0,w,h);
+  const im = g.getImageData(0,0,w,h), d = im.data, N = w*h;
+  // dominant border colours (4-bit bins)
+  const bins = new Map(); let nb = 0;
+  const addB = i => { if (d[i*4+3] < 16) return; const key = (d[i*4]>>4)<<8 | (d[i*4+1]>>4)<<4 | (d[i*4+2]>>4); let b = bins.get(key); if (!b){ b = [0,0,0,0]; bins.set(key,b); } b[0]+=d[i*4]; b[1]+=d[i*4+1]; b[2]+=d[i*4+2]; b[3]++; nb++; };
+  for (let x=0;x<w;x++){ addB(x); addB((h-1)*w+x); } for (let y=1;y<h-1;y++){ addB(y*w); addB(y*w+w-1); }
+  const refs = [...bins.values()].sort((a,b)=>b[3]-a[3]).filter((b,i)=> i===0 || b[3] > nb*0.06).slice(0,5).map(b=>[b[0]/b[3], b[1]/b[3], b[2]/b[3]]);
+  const t2 = tol*tol*3, soft = t2*2.2;
+  const dist = i => { if (d[i*4+3] < 16) return 0; let m = Infinity; const r = d[i*4], gg = d[i*4+1], b = d[i*4+2]; for (const f of refs){ const e = (r-f[0])**2+(gg-f[1])**2+(b-f[2])**2; if (e<m) m = e; } return m; };
+  const mask = new Uint8Array(N), q = new Int32Array(N); let qh = 0, qt = 0;
+  const push = i => { if (!mask[i] && dist(i) <= t2){ mask[i] = 1; q[qt++] = i; } };
+  if (refs.length){ for (let x=0;x<w;x++){ push(x); push((h-1)*w+x); } for (let y=0;y<h;y++){ push(y*w); push(y*w+w-1); } }
+  while (qh < qt){ const i = q[qh++], x = i%w; if (x>0) push(i-1); if (x<w-1) push(i+1); if (i>=w) push(i-w); if (i<N-w) push(i+w); }
+  let removed = 0;
+  for (let i=0;i<N;i++){ if (mask[i]){ d[i*4+3] = 0; removed++; continue; }
+    const x = i%w; // soften the cut: edge pixels still tinted by the background fade out instead of leaving a halo
+    if ((x>0 && mask[i-1]) || (x<w-1 && mask[i+1]) || (i>=w && mask[i-w]) || (i<N-w && mask[i+w])){ const e = dist(i); if (e < soft) d[i*4+3] = Math.round(d[i*4+3]*Math.max(0.15, (e-t2)/(soft-t2))); } }
+  g.putImageData(im,0,0);
+  return {canvas:c, ratio: removed/N};
+}
+function applyBgRemoval(){ const L = cur(); if (!L || L.kind!=='image' || L.locked) return;
+  const orig = L.orig || L.src, tol = +$('bgTol').value;
+  let res; try { res = removeBackground(orig, tol); } catch(err){ toast('Could not read this image'); return; }
+  if (res.ratio < 0.01){ toast('No plain background found — try a higher tolerance'); if (!L.orig) return; }
+  if (res.ratio > 0.985){ toast('That would erase the whole image — lower the tolerance'); return; }
+  L.orig = orig; L.bgTol = tol; L.src = res.canvas; L.rev = (L.rev|0)+1; L.thumb = null;
+  composeSheet(); renderLayers(); commit(); }
+$('bgRemove').onclick = ()=>{ const L = cur(); if (L && L.locked){ toast('Unlock the layer first'); return; } applyBgRemoval(); };
+$('bgTol').oninput = e=>{ $('bgTolO').textContent = e.target.value; };
+$('bgTol').onchange = ()=>{ const L = cur(); if (L && L.orig) applyBgRemoval(); };
+$('bgRestore').onclick = ()=>{ const L = cur(); if (!L || !L.orig || L.locked) return; L.src = L.orig; L.orig = null; L.rev = (L.rev|0)+1; L.thumb = null; composeSheet(); renderLayers(); commit(); };
 $('flipV').onclick = ()=>{ const L=cur(); if(!L||L.locked) return; L.flipY = !L.flipY; composeSheet(); renderLayers(); commit(); };
 $('dupLayer').onclick = ()=>{ const L=cur(); if(!L) return; if(!ensureLayerRoom()) return; const N = cloneLayer(L); select(N.id); if(N.kind==='text') rebuildText(N).then(()=>{composeSheet();renderLayers();commit();}); composeSheet(); renderLayers(); commit(); };
 $('lockLayer').onclick = ()=>{ const L=cur(); if(!L) return; L.locked = !L.locked; renderLayers(); drawPattern(); commit(); };
@@ -1802,7 +1848,7 @@ Promise.all(['Permanent Marker','Bebas Neue','Anton'].map(ensureFont)).then(()=>
 try {
   window.__FB = {
     grantLocalTestAccess: (email) => { AuthService.grantLocalTestAccess(email); refreshPlanUI(); closeLanding(); },
-    getS: () => S, getLayers: () => S.layers, pieceById, pieces: () => pieces, SHOWN: () => SHOWN, COVER, GID, sizeChart: () => SC, measurePattern, sheetCanvas: () => tex,
+    getS: () => S, getLayers: () => S.layers, pieceById, pieces: () => pieces, SHOWN: () => SHOWN, COVER, GID, removeBackground, addImage, sizeChart: () => SC, measurePattern, sheetCanvas: () => tex,
     TEX, PX, BRUSH, PV, pieceAt, fromDisplay, toView, toSheet, hitLayer, composeSheet: () => { composeNow(); drawPatternNow(); }, select, addText, ensureBrushLayer,
     setBrushMode, moveLayerToPiece, stampBrush, commit, renderLayers, rebuildText, fitPattern,
     camBack: () => { const b = document.querySelector('[data-cam="back"]'); if (b) b.click(); },

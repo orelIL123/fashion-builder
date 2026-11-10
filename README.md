@@ -9,6 +9,8 @@ Marker: `FB-BETA-V1` (in page source).
 ## Features
 
 - **Brush paint** on 2D pattern pieces and on the 3D shirt (UV-mapped). Color, size, opacity, hardness, eraser, clear.
+- **Paint over anything:** brush strokes always land on top of the photos and text already on the garment (a new paint layer is started when a photo sits above the old one).
+- **Remove background:** one click on an image layer makes its plain backdrop transparent (runs in the browser, with a tolerance slider and Restore). Best for logos and product shots on a flat background.
 - **Front ↔ Back dragging**: artwork layers can be dragged across packed pattern pieces (and across the 3D garment). Use **→ Front / → Back** as a shortcut.
 
 - **Views:** Sewing pattern · Split · 3D, outside / inside pattern sides, front / back / side cameras, auto-rotate
