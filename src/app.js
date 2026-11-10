@@ -1,16 +1,30 @@
 import * as THREE from 'three';
-import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
-import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
-import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
-import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
-import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
-import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
-import {GTAOPass} from 'three/addons/postprocessing/GTAOPass.js';
-import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
+import {OrbitControls, GLTFLoader, MeshoptDecoder, RoomEnvironment, EffectComposer, RenderPass, GTAOPass, OutputPass} from 'three';
 
-const PATTERN = __PATTERN__;
-const SHEET_CM = PATTERN.sheetCm, PX = 16, TEX = SHEET_CM*PX; // 2048 px print sheet, 16 px per cm
 const $ = id => document.getElementById(id);
+const mark = n => { try { performance.mark('fb:'+n); } catch(_){} };
+mark('start');
+// ---------- garments ----------
+// To add a model: drop <name>.glb (UV islands = pattern pieces) + pattern.json in assets/<id>/ and add one entry here.
+// The default garment's pattern is inlined at build time; others are fetched when picked (?g=<id>).
+const GARMENTS = {
+  raglan:    {name:'Raglan tee',    sub:"Men's crew neck",               glb:'assets/shirt.glb',    pattern:null, sleeve:'raglan'},
+  oversized: {name:'Oversized tee', sub:"Men's crew neck · drop shoulder", glb:'assets/fb/shirt.glb', pattern:'assets/fb/pattern.json', sleeve:'set-in'},
+};
+let GID = new URLSearchParams(location.search).get('g') || 'raglan'; if (!GARMENTS[GID]) GID = 'raglan';
+let PATTERN = null;
+if (GARMENTS[GID].pattern){ try { const r = await fetch(GARMENTS[GID].pattern); if (r.ok) PATTERN = await r.json(); } catch(_){} if (!PATTERN) GID = 'raglan'; }
+if (!PATTERN) PATTERN = __PATTERN__;
+const G = GARMENTS[GID];
+const SHEET_CM = PATTERN.sheetCm, PX = 16, TEX = SHEET_CM*PX; // print sheet, 16 px per cm
+// ---------- units ----------
+let UNIT = 'cm'; try { UNIT = localStorage.getItem('fb-unit') || 'cm'; } catch(_){}
+if (!['mm','cm','in'].includes(UNIT)) UNIT = 'cm';
+const fmtNum = (cm, dp=1) => UNIT==='mm' ? String(Math.round(cm*10)) : UNIT==='in' ? (cm/2.54).toFixed(Math.max(1,dp)) : cm.toFixed(dp);
+const fmtLen = (cm, dp=1) => `${fmtNum(cm,dp)} ${UNIT}`;
+// ---------- render-on-demand ----------
+let needRender = 3, patDirty = true;
+function invalidate(n=2){ if (n > needRender) needRender = n; }
 
 const toast = msg => { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(()=>t.remove(), 3200); };
 
@@ -97,10 +111,11 @@ const sizeCm = p => [(p.box[2]-p.box[0])/PX*pieceScale(p), (p.box[3]-p.box[1])/P
 const isRib = p => p.id==='rib' || /^Neck rib/.test(p.label||'');
 const mainPieces = () => pieces.filter(p=>!p.minor);
 const _pc = document.createElement('canvas').getContext('2d');
+const inBox = (p,x,y) => x>=p.box[0] && x<=p.box[2] && y>=p.box[1] && y<=p.box[3];
 const pieceAt = (x,y) => {
   let best=null, bestA=-1;
   for (const p of pieces){
-    if (!_pc.isPointInPath(p.path,x,y)) continue;
+    if (!inBox(p,x,y) || !_pc.isPointInPath(p.path,x,y)) continue;
     const a=(p.box[2]-p.box[0])*(p.box[3]-p.box[1]);
     if (a>bestA){ best=p; bestA=a; }
   }
@@ -108,15 +123,38 @@ const pieceAt = (x,y) => {
 };
 // display layout for the pattern view: main pieces shelf-packed and readable (the print sheet keeps true UV placement)
 const ORDER = ['front','back','sleeveR','sleeveRb','sleeveL','sleeveLb'];
-const SHOWN = pieces.filter(p=>!p.minor && !/facing/.test(p.label)).sort((a,b)=>{ const ia=ORDER.indexOf(a.id), ib=ORDER.indexOf(b.id); if(ia>=0||ib>=0) return (ia<0?99:ia)-(ib<0?99:ib); return (b.box[2]-b.box[0])*(b.box[3]-b.box[1])-(a.box[2]-a.box[0])*(a.box[3]-a.box[1]); });
-{ const maxW = 165*PX, gap = 6*PX, lab = 6*PX, minCell = 31*PX; let x=0, y=0, rowH=0;
+// Core pieces are always on the table; trims (inner hems/cuffs, facings, neck tapes) are shown on demand so that
+// every printable area of the 3D garment can also be reached in the 2D drawing.
+const isCore = p => (!p.minor && !/facing/.test(p.label||'')) || isRib(p);
+let showTrims = false, SHOWN = [];
+const PAD = {l:98, r:22, t:66, b:108}; // room for rulers + tool rail, pane header, last label row + zoom bar
+function packPieces(maxW, lab, minCell){ const gap = 6*PX; let x=0, y=0, rowH=0, W=0;
   for (const p of SHOWN){ const w=p.box[2]-p.box[0], h=p.box[3]-p.box[1], cell=Math.max(w,minCell); if (x>0 && x+cell>maxW){ x=0; y+=rowH+gap+lab; rowH=0; }
-    p.dx = x+(cell-w)/2-p.box[0]; p.dy = y-p.box[1]; x += cell+gap; rowH = Math.max(rowH,h); } }
+    p.dx = x+(cell-w)/2-p.box[0]; p.dy = y-p.box[1]; p.cell = cell; x += cell+gap; W = Math.max(W, x-gap); rowH = Math.max(rowH,h); }
+  return [W, y+rowH]; }
+// Shelf-pack the shown pieces into the shape of the pane: try a range of table widths and keep the one that lets the
+// pieces draw largest. Labels are a fixed size on screen, so their room in sheet units depends on the zoom.
+function layoutPieces(paneW, paneH){
+  for (const p of pieces){ delete p.dx; delete p.dy; }
+  SHOWN = pieces.filter(p=> showTrims || isCore(p)).sort((a,b)=>{ const ia=ORDER.indexOf(a.id), ib=ORDER.indexOf(b.id); if(ia>=0||ib>=0) return (ia<0?99:ia)-(ib<0?99:ib);
+    const strip = p => (p.box[2]-p.box[0]) > 6*(p.box[3]-p.box[1]) ? 1 : 0; // long bands go last so they do not break the rows
+    return strip(a)-strip(b) || (b.box[2]-b.box[0])*(b.box[3]-b.box[1])-(a.box[2]-a.box[0])*(a.box[3]-a.box[1]); });
+  if (!(paneW > 200 && paneH > 200)){ packPieces(170*PX, 13*PX, 32*PX); return; }
+  let best = null;
+  for (let w=80; w<=520; w+=10){ let lab = 13*PX, cell = 32*PX, k = 0;
+    for (let it=0; it<3; it++){ const [W,H] = packPieces(w*PX, lab, cell); k = Math.min((paneW-PAD.l-PAD.r)/W, (paneH-PAD.t-PAD.b)/H); lab = 42/k; cell = Math.min(60*PX, (showTrims?96:108)/k); }
+    if (!best || k > best.k) best = {k, w, lab, cell}; }
+  packPieces(best.w*PX, best.lab, best.cell);
+}
+layoutPieces();
 const dispBox = p => [p.box[0]+p.dx, p.box[1]+p.dy, p.box[2]+p.dx, p.box[3]+p.dy];
 // display point -> {piece, sheet point}
-function fromDisplay(x,y){ for (const p of SHOWN){ if (_pc.isPointInPath(p.path, x-p.dx, y-p.dy)) return {p, sx:x-p.dx, sy:y-p.dy}; } return null; }
+function fromDisplay(x,y){ for (const p of SHOWN){ if (inBox(p, x-p.dx, y-p.dy) && _pc.isPointInPath(p.path, x-p.dx, y-p.dy)) return {p, sx:x-p.dx, sy:y-p.dy}; } return null; }
 const offsetOf = L => { const p = pieceAt(L.x,L.y); return p && p.dx!==undefined ? [p.dx,p.dy] : null; };
 const allPieces = new Path2D(); pieces.forEach(p=>allPieces.addPath(p.path));
+const COVER = {done:false, tris:0, cm2:0}; // mesh UV area that no pattern outline covers (repaired at load)
+const _srcIds = new WeakMap(); let _srcN = 0;
+const srcId = o => { if (!o) return 0; let i = _srcIds.get(o); if (!i){ i = ++_srcN; _srcIds.set(o, i); } return i; };
 
 // ---------- state ----------
 const FABRICS = [['Off white','#ecebe6'],['White','#f6f6f4'],['Black','#1d1d1f'],['Navy','#1f2a44'],['Olive','#5c6b4a'],['Red','#8f2a26'],['Sand','#cdb48f'],['Sky','#a9bed6'],['Rose','#d9a1a8'],['Heather','#77797a'],['Forest','#3d5a40'],['Burgundy','#5e1b26']];
@@ -134,7 +172,10 @@ const S = { fabric:'#40593f', grad:false, grad2:'#1f2a44', rib:'#40593f', ribMat
 let uid = 0;
 
 // ---------- layers ----------
+const fontCss = new Promise(res=>{ const l = $('fontCss'); if (!l || l.sheet) return res();
+  l.addEventListener('load', ()=>res(), {once:true}); l.addEventListener('error', ()=>res(), {once:true}); setTimeout(res, 5000); });
 async function ensureFont(font){
+  await fontCss;
   try { await document.fonts.load(`220px "${font}"`); } catch(_){}
   try { await document.fonts.load(`700 220px "${font}"`); } catch(_){}
 }
@@ -211,7 +252,7 @@ function stampBrush(L, x, y){
     grad.addColorStop(1, `rgba(${rr},${gg},${bb},0)`);
     g.fillStyle = grad; g.beginPath(); g.arc(x,y,r,0,Math.PI*2); g.fill(); g.restore();
   }
-  L.thumb = null;
+  L.thumb = null; L.rev = (L.rev|0)+1;
 }
 function strokeBrush(L, x0,y0,x1,y1){
   const dist = Math.hypot(x1-x0,y1-y0);
@@ -224,6 +265,7 @@ function setBrushMode(on){
   BRUSH.on = !!on;
   if ($('brushTool')) $('brushTool').setAttribute('aria-pressed', BRUSH.on);
   if ($('brushPanel')) $('brushPanel').hidden = !BRUSH.on;
+  if ($('railBrush')) $('railBrush').setAttribute('aria-pressed', BRUSH.on);
   if (BRUSH.on){ setPlaceMode(null); pc.style.cursor = 'crosshair'; $('hint').textContent = 'Brush: paint on 2D pieces or rotate the 3D shirt and paint · E eraser · [ ] size'; }
   else { pc.style.cursor = 'grab'; $('hint').textContent = 'Add text/photo/brush on the 2D pattern (or 3D) · drag across pieces · ⌘Z undo'; }
 }
@@ -236,8 +278,8 @@ function moveLayerToPiece(L, pieceId){
 // ---------- undo / redo ----------
 const hist = [], fut = [];
 const snapshot = () => JSON.stringify({...S, layers:S.layers.map(l=>{
-  const base = {...l, src:undefined, thumb:undefined, _k:l.id};
-  if (l.kind==='brush' && l.src){ try { base._dataUrl = l.src.toDataURL('image/png'); } catch(_){ base._dataUrl = null; } }
+  const base = {...l, src:undefined, thumb:undefined, _url:undefined, _urlRev:undefined, _rotHandle:undefined, _k:l.id};
+  if (l.kind==='brush' && l.src){ try { if (l._urlRev !== (l.rev|0) || !l._url){ l._url = l.src.toDataURL('image/png'); l._urlRev = l.rev|0; } base._dataUrl = l._url; } catch(_){ base._dataUrl = null; } }
   return base;
 })});
 const srcById = new Map();
@@ -253,7 +295,7 @@ function restore(s){ const o = JSON.parse(s); const oldMap = new Map(S.layers.ma
         if (prev && prev.src && prev.kind==='brush' && prev._lastUrl===l._dataUrl){ c.getContext('2d').drawImage(prev.src,0,0); }
         else {
           const im = new Image();
-          im.onload = ()=>{ c.getContext('2d').clearRect(0,0,TEX,TEX); c.getContext('2d').drawImage(im,0,0); L.thumb=null; composeSheet(); drawPattern(); };
+          im.onload = ()=>{ c.getContext('2d').clearRect(0,0,TEX,TEX); c.getContext('2d').drawImage(im,0,0); L.thumb=null; L.rev=(L.rev|0)+1; L._url=l._dataUrl; L._urlRev=L.rev; composeSheet(); drawPattern(); };
           im.src = l._dataUrl;
         }
       } else if (prev && prev.src && prev.kind==='brush'){ c.getContext('2d').drawImage(prev.src,0,0); }
@@ -332,19 +374,24 @@ const tex = document.createElement('canvas'); tex.width = tex.height = TEX; cons
 const texIn = document.createElement('canvas'); texIn.width = texIn.height = TEX; const tgi = texIn.getContext('2d');
 let sheetTex = null, insideTex = null;
 const bleachOf = hex => { const c = new THREE.Color(hex); return '#'+c.lerp(new THREE.Color(1,1,0.97), 0.78).getHexString(); };
+const baseC = document.createElement('canvas'); baseC.width = baseC.height = TEX; const bgx = baseC.getContext('2d');
+let baseKey = null;
 function paintBase(g){
-  g.clearRect(0,0,TEX,TEX);
-  for (const p of pieces){
-    if (isRib(p) && !S.ribMatch){ g.fillStyle = S.rib; g.fill(p.path); continue; }
-    if (S.grad && !isRib(p)){ const gr = g.createLinearGradient(0,p.box[1],0,p.box[3]); gr.addColorStop(0,S.fabric); gr.addColorStop(1,S.grad2); g.fillStyle = gr; }
-    else g.fillStyle = S.fabric;
-    g.fill(p.path);
-  }
+  // The whole sheet gets the fabric colour first, so UV areas that fall outside the traced outlines
+  // (seam tapes, edge texels picked up by mip-mapping) never render black on the 3D garment.
+  g.setTransform(1,0,0,1,0,0); g.globalCompositeOperation = 'source-over'; g.fillStyle = S.fabric; g.fillRect(0,0,TEX+1,TEX+1);
+  const fillOf = p => { if (isRib(p) && !S.ribMatch) return S.rib;
+    if (S.grad && !isRib(p)){ const gr = g.createLinearGradient(0,p.box[1],0,p.box[3]); gr.addColorStop(0,S.fabric); gr.addColorStop(1,S.grad2); return gr; }
+    return S.fabric; };
+  g.lineJoin = 'round'; g.lineWidth = 4;
+  if (S.grad || !S.ribMatch) for (const p of pieces){ g.strokeStyle = fillOf(p); g.stroke(p.path); } // 2px colour bleed past every edge
+  for (const p of pieces){ g.fillStyle = fillOf(p); g.fill(p.path); }
   if (PATTERN.stitches===false) return;
   g.save(); g.strokeStyle='rgba(0,0,0,0.18)'; g.lineWidth=1.6; g.setLineDash([5,4]);
-  for (const id of ['front','back','sleeveR','sleeveL']){ const b = pieceById[id].box; for(const d of [2,2.6]){ g.beginPath(); g.moveTo(b[0],b[3]-d*PX); g.lineTo(b[2],b[3]-d*PX); g.stroke(); } }
+  for (const id of ['front','back','sleeveR','sleeveL']){ if (!pieceById[id]) continue; const b = pieceById[id].box; for(const d of [2,2.6]){ g.beginPath(); g.moveTo(b[0],b[3]-d*PX); g.lineTo(b[2],b[3]-d*PX); g.stroke(); } }
   g.restore();
 }
+function ensureBase(){ const key = [S.fabric,S.grad,S.grad2,S.rib,S.ribMatch].join('|'); if (key !== baseKey){ baseKey = key; paintBase(bgx); } return key; }
 function paintLayers(g, inside){
   g.save(); g.clip(allPieces);
   for (const L of S.layers){ if(!L.visible || !!L.inside!==inside) continue;
@@ -359,48 +406,68 @@ function paintLayers(g, inside){
     g.restore(); }
   g.restore();
 }
+let washKey = null, washC = null;
+function washOverlay(){ const key = [S.wash,S.washSize,S.washSeed,S.fabric].join('|');
+  if (key !== washKey){ washKey = key; if (!washC){ washC = document.createElement('canvas'); washC.width = washC.height = TEX; }
+    const tc = washC.getContext('2d'); tc.globalCompositeOperation = 'source-over'; tc.clearRect(0,0,TEX,TEX);
+    tc.fillStyle = bleachOf(S.fabric); tc.fillRect(0,0,TEX+1,TEX+1); tc.globalCompositeOperation = 'destination-in'; tc.drawImage(washMask(S.wash, S.washSize, S.washSeed),0,0,TEX,TEX); }
+  return washC; }
 function paintWash(g){
   if (S.wash==='none' || S.washStr<=0) return;
-  const m = washMask(S.wash, S.washSize, S.washSeed);
-  const t = document.createElement('canvas'); t.width=t.height=TEX; const tc=t.getContext('2d');
-  tc.fillStyle = bleachOf(S.fabric); tc.fillRect(0,0,TEX,TEX); tc.globalCompositeOperation='destination-in'; tc.drawImage(m,0,0,TEX,TEX);
-  g.save(); g.clip(allPieces); g.globalAlpha = S.washStr; g.drawImage(t,0,0); g.restore();
+  g.save(); g.clip(allPieces); g.globalAlpha = S.washStr; g.drawImage(washOverlay(),0,0); g.restore();
 }
-function composeSheet(){
-  for (const [g, inside] of [[tg,false],[tgi,true]]){
-    paintBase(g);
+// composeSheet() only marks the sheet dirty; the frame loop composes at most once per frame, and only the side
+// (outside / inside) whose inputs actually changed is repainted and re-uploaded to the GPU.
+let composeDirty = true; const sideSig = [null, null];
+function composeSheet(){ composeDirty = true; }
+function composeNow(force){
+  composeDirty = false;
+  const bk = ensureBase(), wk = (S.wash==='none' || S.washStr<=0) ? '' : [S.wash,S.washSize,S.washSeed,S.washStr,S.washPrints].join('|');
+  let changed = false;
+  for (const [g, inside, i] of [[tg,false,0],[tgi,true,1]]){
+    let sig = bk+'#'+wk+'#'+COVER.tris;
+    for (const L of S.layers){ if (!L.visible || !!L.inside!==inside || !L.src) continue;
+      sig += ';'+srcId(L.src)+'.'+(L.rev|0)+','+(L.opacity??1)+(L.kind==='brush' ? '' : ','+[L.x,L.y,L.w,L.rot,L.flipX?1:0,L.flipY?1:0,L.aspect].join(',')); }
+    if (!force && sig === sideSig[i]) continue;
+    sideSig[i] = sig; changed = true;
+    g.globalCompositeOperation = 'copy'; g.drawImage(baseC,0,0); g.globalCompositeOperation = 'source-over';
     if (S.washPrints){ paintLayers(g, inside); paintWash(g); } else { paintWash(g); paintLayers(g, inside); }
+    const t = inside ? insideTex : sheetTex; if (t) t.needsUpdate = true;
   }
-  if (sheetTex){ sheetTex.needsUpdate = true; insideTex.needsUpdate = true; }
+  if (changed) invalidate();
   drawPattern();
 }
+const flushCompose = () => { if (composeDirty) composeNow(); };
 
 // ---------- pattern view ----------
 const pc = $('patternCanvas'), pg = pc.getContext('2d');
-const PV = {k:1, ox:0, oy:0, inside:false};
+const PV = {k:1, ox:0, oy:0, inside:false, fitK:1, grid:true};
+let TOOL = 'select'; // 'select' | 'pan'
 function fitPattern(){
   const r = pc.getBoundingClientRect(); if(!r.width) return;
   const B = SHOWN.map(dispBox); const minX=Math.min(...B.map(b=>b[0])), minY=Math.min(...B.map(b=>b[1])), maxX=Math.max(...B.map(b=>b[2])), maxY=Math.max(...B.map(b=>b[3]));
-  const pad = 56, k = Math.min((r.width-pad*2)/(maxX-minX), (r.height-pad*2-40)/(maxY-minY));
-  PV.k = k; PV.ox = (r.width-(maxX-minX)*k)/2 - minX*k; PV.oy = (r.height-(maxY-minY)*k)/2 - minY*k + 10;
+  const aw = Math.max(60, r.width-PAD.l-PAD.r), ah = Math.max(60, r.height-PAD.t-PAD.b), k = Math.min(aw/(maxX-minX), ah/(maxY-minY));
+  PV.k = PV.fitK = k; PV.ox = PAD.l + (aw-(maxX-minX)*k)/2 - minX*k; PV.oy = PAD.t + (ah-(maxY-minY)*k)/2 - minY*k;
   drawPattern();
 }
-function resizePattern(){ const r = pc.getBoundingClientRect(), d = devicePixelRatio||1; pc.width = Math.max(1,r.width*d); pc.height = Math.max(1,r.height*d); fitPattern(); }
+function resizePattern(){ const r = pc.getBoundingClientRect(), d = devicePixelRatio||1; if (!r.width) return; pc.width = Math.max(1,r.width*d); pc.height = Math.max(1,r.height*d); layoutPieces(r.width, r.height); fitPattern(); drawPatternNow(); }
 const toView = (x,y) => [x*PV.k+PV.ox, y*PV.k+PV.oy];
 const toSheet = (x,y) => [(x-PV.ox)/PV.k, (y-PV.oy)/PV.k];
 function layerCorners(L){ const h=L.w*L.aspect, a=L.rot*Math.PI/180, c=Math.cos(a), s=Math.sin(a);
   return [[-1,-1],[1,-1],[1,1],[-1,1]].map(([u,v])=>[L.x+(u*L.w/2)*c-(v*h/2)*s, L.y+(u*L.w/2)*s+(v*h/2)*c]); }
-function drawPattern(){
+function drawPattern(){ patDirty = true; }
+function drawPatternNow(){
+  patDirty = false;
   const d = devicePixelRatio||1, W = pc.width/d, H = pc.height/d; if (!W) return;
   pg.setTransform(d,0,0,d,0,0); pg.clearRect(0,0,W,H);
   const step = PX*PV.k;
-  pg.fillStyle='rgba(217,228,210,0.07)'; if (step*5 > 8) for(let x=PV.ox%(step*5); x<W; x+=step*5) for(let y=PV.oy%(step*5); y<H; y+=step*5) pg.fillRect(x-0.75,y-0.75,1.5,1.5);
+  pg.fillStyle='rgba(217,228,210,0.07)'; if (PV.grid && step*5 > 8) for(let x=PV.ox%(step*5); x<W; x+=step*5) for(let y=PV.oy%(step*5); y<H; y+=step*5) pg.fillRect(x-0.75,y-0.75,1.5,1.5);
   pg.save(); pg.translate(PV.ox, PV.oy); pg.scale(PV.k, PV.k);
   const src = PV.inside ? texIn : tex;
   for (const p of SHOWN){
     pg.save(); pg.translate(p.dx, p.dy);
-    pg.save(); pg.shadowColor='rgba(0,0,0,0.5)'; pg.shadowBlur=14; pg.shadowOffsetY=3/PV.k; pg.fillStyle=S.fabric; pg.fill(p.path); pg.restore();
-    pg.save(); pg.clip(p.path); pg.drawImage(src,0,0); pg.restore();
+    pg.save(); pg.clip(p.path); pg.drawImage(src, p.box[0]-1, p.box[1]-1, p.box[2]-p.box[0]+2, p.box[3]-p.box[1]+2, p.box[0]-1, p.box[1]-1, p.box[2]-p.box[0]+2, p.box[3]-p.box[1]+2); pg.restore();
+    pg.strokeStyle='rgba(255,255,255,0.22)'; pg.lineWidth=1/PV.k; pg.stroke(p.path);
     const cx=(p.box[0]+p.box[2])/2; pg.save(); pg.strokeStyle='rgba(255,255,255,0.28)'; pg.lineWidth=1/PV.k; pg.setLineDash([5/PV.k,4/PV.k]);
     pg.beginPath(); pg.moveTo(cx,p.box[1]+6); pg.lineTo(cx,p.box[3]-6); pg.stroke(); pg.restore();
     pg.restore();
@@ -409,14 +476,18 @@ function drawPattern(){
   // rulers
   pg.fillStyle='rgba(16,18,15,0.92)'; pg.fillRect(0,0,W,22); pg.fillRect(0,0,22,H);
   pg.fillStyle='#9aa294'; pg.strokeStyle='#4a5146'; pg.font='9.5px "JetBrains Mono", monospace'; pg.textAlign='center';
-  const unit = 25*PX; for(let v=Math.ceil(-PV.ox/PV.k/unit)*unit; v*PV.k+PV.ox<W; v+=unit){ const x=v*PV.k+PV.ox; pg.fillText(String(Math.round(v/PX)), x, 12); }
-  pg.beginPath(); for(let v=Math.ceil(-PV.ox/PV.k/(5*PX))*5*PX; v*PV.k+PV.ox<W; v+=5*PX){ const x=Math.round(v*PV.k+PV.ox)+.5; pg.moveTo(x,17); pg.lineTo(x,22); } pg.stroke();
-  pg.save(); pg.textAlign='center'; for(let v=Math.ceil(-PV.oy/PV.k/unit)*unit; v*PV.k+PV.oy<H; v+=unit){ const y=v*PV.k+PV.oy; pg.save(); pg.translate(11,y); pg.rotate(-Math.PI/2); pg.fillText(String(Math.round(v/PX)),0,3); pg.restore(); } pg.restore();
-  pg.fillText('cm', 11, 14);
+  const unit = (UNIT==='in' ? 25.4 : 25)*PX, minor = unit/5, rl = v => String(Math.round(UNIT==='in' ? v/PX/2.54 : UNIT==='mm' ? v/PX*10 : v/PX));
+  for(let v=Math.ceil(-PV.ox/PV.k/unit)*unit; v*PV.k+PV.ox<W; v+=unit){ const x=v*PV.k+PV.ox; if (x>30) pg.fillText(rl(v), x, 12); }
+  pg.beginPath(); for(let v=Math.ceil(-PV.ox/PV.k/minor)*minor; v*PV.k+PV.ox<W; v+=minor){ const x=Math.round(v*PV.k+PV.ox)+.5; pg.moveTo(x,17); pg.lineTo(x,22); } pg.stroke();
+  pg.save(); pg.textAlign='center'; for(let v=Math.ceil(-PV.oy/PV.k/unit)*unit; v*PV.k+PV.oy<H; v+=unit){ const y=v*PV.k+PV.oy; if (y<30) continue; pg.save(); pg.translate(11,y); pg.rotate(-Math.PI/2); pg.fillText(rl(v),0,3); pg.restore(); } pg.restore();
+  pg.fillStyle='rgba(16,18,15,0.92)'; pg.fillRect(0,0,22,22); pg.fillStyle='#9aa294'; pg.fillText(UNIT, 11, 14);
   pg.textAlign='center';
+  const fit = (txt, maxW) => { if (pg.measureText(txt).width <= maxW) return txt; let t = txt; while (t.length > 3 && pg.measureText(t+'…').width > maxW) t = t.slice(0,-1); return t.trimEnd()+'…'; };
   for (const p of SHOWN){ const [w,h] = sizeCm(p); const db = dispBox(p); const [cx] = toView((db[0]+db[2])/2, 0); const [,by] = toView(0, db[3]);
-    pg.fillStyle='#e9ece4'; pg.font='600 12px "Familjen Grotesk", sans-serif'; pg.fillText(p.label, cx, by+17);
-    pg.fillStyle='#9aa294'; pg.font='10.5px "JetBrains Mono", monospace'; pg.fillText(`${w.toFixed(0)} × ${h.toFixed(h<10?1:0)} cm`, cx, by+31); }
+    const maxW = Math.max(40, ((p.cell||0) + 5*PX)*PV.k), dim = `${fmtNum(w,0)} × ${fmtNum(h,h<10?1:0)} ${UNIT}`;
+    pg.fillStyle='#e9ece4'; pg.font='600 11.5px "Familjen Grotesk", sans-serif'; pg.fillText(fit(p.label||p.id, maxW), cx, by+17);
+    pg.fillStyle='#9aa294'; pg.font='10.5px "JetBrains Mono", monospace'; pg.fillText(fit(dim, maxW), cx, by+31); }
+  { const z = Math.round(PV.k/PV.fitK*100)+'%'; const zo = $('zoomPct'); if (zo && zo.textContent !== z) zo.textContent = z; }
   const L = cur();
   const off = L && L.kind!=='brush' && offsetOf(L);
   if (L && L.kind!=='brush' && off && L.visible && !!L.inside===PV.inside){ const c = layerCorners(L).map(([x,y])=>toView(x+off[0],y+off[1]));
@@ -429,7 +500,7 @@ function drawPattern(){
     pg.beginPath(); pg.moveTo(midTop[0], midTop[1]); pg.lineTo(rh[0], rh[1]); pg.stroke();
     pg.beginPath(); pg.arc(rh[0], rh[1], 6, 0, Math.PI*2); pg.fill();
     L._rotHandle = rh;
-    pg.font='500 10.5px "JetBrains Mono", monospace'; const lab=`${(L.w/PX).toFixed(1)} × ${(L.w*L.aspect/PX).toFixed(1)} cm`;
+    pg.font='500 10.5px "JetBrains Mono", monospace'; const lab=`${fmtNum(L.w/PX)} × ${fmtNum(L.w*L.aspect/PX)} ${UNIT}`;
     const tw = pg.measureText(lab).width+12; const lx=(c[2][0]+c[3][0])/2, ly=Math.max(c[2][1],c[3][1]); pg.fillStyle='#f2c14e'; pg.fillRect(lx-tw/2, ly+8, tw, 18); pg.fillStyle='#1d1a10'; pg.fillText(lab, lx, ly+21);
     if (L.locked){ pg.fillStyle='rgba(242,193,78,.85)'; pg.font='600 11px "Familjen Grotesk"'; pg.fillText('locked', lx, ly+42); }
   }
@@ -453,6 +524,7 @@ function setPlaceMode(mode){
   $('placeBanner').hidden = !on;
   $('placeBanner').textContent = mode==='text' ? 'Click a pattern piece to place text…' : mode==='image' ? 'Click a pattern piece to place a photo…' : '';
   $('patternPane').classList.toggle('placing', on);
+  $('placeText').setAttribute('aria-pressed', mode==='text'); $('placeImage').setAttribute('aria-pressed', mode==='image');
   pc.style.cursor = on ? 'crosshair' : (BRUSH.on ? 'crosshair' : 'grab');
 }
 function snapLayer(L, sx, sy){
@@ -466,13 +538,14 @@ function snapLayer(L, sx, sy){
 }
 pc.addEventListener('pointerdown', e=>{
   const r = pc.getBoundingClientRect(), vx=e.clientX-r.left, vy=e.clientY-r.top; const [dx,dy] = toSheet(vx,vy);
+  if (e.button===1 || (TOOL==='pan' && !BRUSH.on && !placeMode)){ e.preventDefault(); pdrag={mode:'pan', x:vx, y:vy, ox:PV.ox, oy:PV.oy}; pc.style.cursor='grabbing'; pc.setPointerCapture(e.pointerId); return; }
   if (BRUSH.on){
     const hit = fromDisplay(dx,dy);
     if (!hit){ toast('Paint on a pattern piece'); return; }
     const L = ensureBrushLayer(PV.inside); if (!L) return;
     select(L.id);
     stampBrush(L, hit.sx, hit.sy);
-    pdrag = {mode:'brush', L, last:[hit.sx, hit.sy]};
+    pdrag = {mode:'brush', L, last:[hit.sx, hit.sy], piece:hit.p};
     composeSheet();
     pc.setPointerCapture(e.pointerId); return;
   }
@@ -512,6 +585,7 @@ pc.addEventListener('pointermove', e=>{
   const r = pc.getBoundingClientRect(), vx=e.clientX-r.left, vy=e.clientY-r.top; const [dx,dy] = toSheet(vx,vy);
   if (!pdrag){
     if (placeMode || BRUSH.on){ pc.style.cursor='crosshair'; return; }
+    if (TOOL==='pan'){ pc.style.cursor='grab'; return; }
     const sel = cur(), off = sel && sel.kind!=='brush' && offsetOf(sel);
     const rh = sel && !sel.locked && off && rotHandleOf(sel);
     if (rh && Math.hypot(rh[0]-vx, rh[1]-vy)<12){ pc.style.cursor='grab'; return; }
@@ -519,7 +593,9 @@ pc.addEventListener('pointermove', e=>{
   }
   if (pdrag.mode==='brush'){
     const hit = fromDisplay(dx,dy);
-    if (hit){ strokeBrush(pdrag.L, pdrag.last[0], pdrag.last[1], hit.sx, hit.sy); pdrag.last=[hit.sx,hit.sy]; composeSheet(); }
+    if (hit){ // crossing to another piece jumps elsewhere on the print sheet: stamp, don't drag a streak across it
+      if (hit.p === pdrag.piece) strokeBrush(pdrag.L, pdrag.last[0], pdrag.last[1], hit.sx, hit.sy); else stampBrush(pdrag.L, hit.sx, hit.sy);
+      pdrag.last=[hit.sx,hit.sy]; pdrag.piece=hit.p; composeSheet(); }
     return;
   }
   if (pdrag.mode==='move'){
@@ -556,13 +632,13 @@ $('placeImage').onclick = ()=>{
 };
 addEventListener('keydown', e=>{ if(e.key==='Escape' && placeMode){ pendingImage=null; setPlaceMode(null); } });
 pc.addEventListener('wheel', e=>{ e.preventDefault(); const r=pc.getBoundingClientRect(), vx=e.clientX-r.left, vy=e.clientY-r.top;
-  const f = Math.exp(-e.deltaY*0.0015); const [sx,sy]=toSheet(vx,vy); PV.k*=f; PV.ox = vx - sx*PV.k; PV.oy = vy - sy*PV.k; drawPattern(); }, {passive:false});
+  const f = Math.exp(-e.deltaY*0.0015); const [sx,sy]=toSheet(vx,vy); PV.k = Math.min(PV.fitK*12, Math.max(PV.fitK*0.25, PV.k*f)); PV.ox = vx - sx*PV.k; PV.oy = vy - sy*PV.k; drawPattern(); }, {passive:false});
 $('fitPattern').onclick = fitPattern;
 for (const [id,v] of [['pOut',false],['pIn',true]]) $(id).onclick = ()=>{ PV.inside = v; $('pOut').setAttribute('aria-pressed', !v); $('pIn').setAttribute('aria-pressed', v); drawPattern(); };
 
 // ---------- three.js stage ----------
 const glc = $('gl'), pane = $('glPane');
-const renderer = new THREE.WebGLRenderer({canvas:glc, antialias:true, alpha:true, preserveDrawingBuffer:true});
+const renderer = new THREE.WebGLRenderer({canvas:glc, antialias:true, alpha:true, preserveDrawingBuffer:false, powerPreference:'high-performance'});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 renderer.toneMapping = THREE.NeutralToneMapping; renderer.toneMappingExposure = 0.95;
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.VSMShadowMap;
@@ -602,7 +678,7 @@ function goboCanvas(){
   return c;
 }
 const goboTex = new THREE.CanvasTexture(goboCanvas()); goboTex.colorSpace = THREE.SRGBColorSpace;
-function refreshGobo(){ goboTex.image = goboCanvas(); goboTex.needsUpdate = true; }
+function refreshGobo(){ goboTex.image = goboCanvas(); goboTex.needsUpdate = true; invalidate(); }
 
 const KEY = {i:1, angle:-28};
 const key = new THREE.SpotLight(0xfff3e0, 40, 0, 0.62, 0.9, 1.6);
@@ -664,6 +740,24 @@ function applyMaterial(){ const M = MATERIALS[APP.material];
 function fixSleeveUV(geo){ const uv = geo.attributes.uv, b = pieceById.sleeveR.box, cx = (b[0]+b[2])/2/TEX;
   const x0=b[0]/TEX-0.004, x1=b[2]/TEX+0.004, y0=b[1]/TEX-0.004, y1=b[3]/TEX+0.004;
   for (let i=0;i<uv.count;i++){ const u=uv.getX(i), v=uv.getY(i); if(u>x0&&u<x1&&v>y0&&v<y1) uv.setX(i, 2*cx-u); } uv.needsUpdate = true; }
+// Dead-zone repair: any mesh triangle whose UVs fall outside every traced outline becomes paintable too
+// (it joins the clip region, so prints/brush land there and the base colour already covers it).
+function repairCoverage(){
+  const extra = new Path2D(); let n = 0, cm2 = 0;
+  for (const m of shirtMeshes){ const g = m.geometry, idx = g.index ? g.index.array : null, uv = g.attributes.uv, cnt = idx ? idx.length : uv.count;
+    for (let t=0; t<cnt; t+=3){ const i0 = idx?idx[t]:t, i1 = idx?idx[t+1]:t+1, i2 = idx?idx[t+2]:t+2;
+      const u0=uv.getX(i0)*TEX, v0=uv.getY(i0)*TEX, u1=uv.getX(i1)*TEX, v1=uv.getY(i1)*TEX, u2=uv.getX(i2)*TEX, v2=uv.getY(i2)*TEX;
+      if (pieceAt((u0+u1+u2)/3, (v0+v1+v2)/3)) continue;
+      extra.moveTo(u0,v0); extra.lineTo(u1,v1); extra.lineTo(u2,v2); extra.closePath(); n++; cm2 += Math.abs((u1-u0)*(v2-v0)-(u2-u0)*(v1-v0))/2/(PX*PX); } }
+  COVER.done = true; COVER.tris = n; COVER.cm2 = cm2;
+  if (n){ allPieces.addPath(extra); COVER.path = extra; composeSheet(); }
+  renderSpec();
+}
+const G3D = {w:0, h:0}; // draped garment size in cm (used by the size chart)
+function renderSpec(){ if (!shirtMeshes.length) return;
+  const tris = shirtMeshes.reduce((a,m)=>a+(m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count)/3,0);
+  $('spec').innerHTML = `Garment <b>${G3D.w.toFixed(0)} × ${G3D.h.toFixed(0)} cm</b> as draped<br>Mesh <b>${(tris/1000).toFixed(0)}k triangles</b>, ${USER?'your CLO garment':'cloth-simulated'}, ${mainPieces().length} pattern pieces<br>Print sheet <b>${SHEET_CM} × ${SHEET_CM} cm · ${Math.floor(TEX)}px</b> (${PX} px/cm)`
+    + (COVER.done ? `<br>Printable coverage <b>100%</b>${COVER.tris ? ` — ${COVER.cm2.toFixed(0)} cm² of untraced seam area auto-repaired` : ''}` : ''); }
 let shirtMeshes = [], hangerMeshes = [], hookMeshes = [];
 let FIT = {dist:2.2, cy:0, h:0.8, w:0.8};
 function fitDist(){ const t = Math.tan(THREE.MathUtils.degToRad(camera.fov/2)); FIT.dist = Math.max(FIT.h*1.12/2/t, FIT.w*1.18/2/t/Math.max(camera.aspect,0.4)); return FIT.dist; }
@@ -688,13 +782,14 @@ const onGarment = gltf => {
   FIT.cy = (full.max.y + full.min.y)/2 - 0.01;
   FIT.h = Math.max(h, sz.y*1.32)*1.12; FIT.w = sz.x;
   key.target.position.set(0,FIT.cy,0);
-  window.__dbg = {fabricMat, ribMat, shirtMeshes, scene, camera, renderer, THREE, controls};
-  $('spec').innerHTML = `Garment <b>${(sz.x*100).toFixed(0)} × ${(sz.y*100).toFixed(0)} cm</b> as draped<br>Mesh <b>${(shirtMeshes.reduce((a,m)=>a+m.geometry.index.count/3,0)/1000).toFixed(0)}k triangles</b>, ${USER?'your CLO garment':'cloth-simulated'}, ${mainPieces().length} pattern pieces<br>Print sheet <b>${SHEET_CM} × ${SHEET_CM} cm · ${TEX}px</b> (${PX} px/cm)`;
-  resizeGL(); setCam('front', true); $('loading').hidden = true;
+  window.__dbg = {fabricMat, ribMat, shirtMeshes, scene, camera, renderer, THREE, controls, render};
+  G3D.w = sz.x*100; G3D.h = sz.y*100; renderSpec();
+  (window.requestIdleCallback || (f=>setTimeout(f,60)))(()=>{ try { repairCoverage(); } catch(e){ console.warn(e); } });
+  resizeGL(); setCam('front', true); $('loading').hidden = true; invalidate(4); mark('garment');
 };
-const onGarmentErr = err => { $('loading').textContent = 'Could not load the garment file (assets/shirt.glb). Open this folder through a local web server — see README.'; console.error(err); };
-if (window.__GLB_B64){ const bin = Uint8Array.from(atob(window.__GLB_B64), c=>c.charCodeAt(0)); loader.parse(bin.buffer, '', onGarment, onGarmentErr); }
-else loader.load('assets/shirt.glb', onGarment, undefined, onGarmentErr);
+const onGarmentErr = err => { $('loading').textContent = 'Could not load the garment file ('+G.glb+'). Open this folder through a local web server — see README.'; console.error(err); };
+if (window.__GLB_B64 && GID==='raglan'){ const bin = Uint8Array.from(atob(window.__GLB_B64), c=>c.charCodeAt(0)); loader.parse(bin.buffer, '', onGarment, onGarmentErr); }
+else loader.load(G.glb, onGarment, undefined, onGarmentErr);
 
 const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1,1,{samples:4, type:THREE.HalfFloatType}));
 composer.addPass(new RenderPass(scene, camera));
@@ -705,13 +800,13 @@ gtao.blendIntensity = 1.0;
 composer.addPass(gtao); composer.addPass(new OutputPass());
 
 function resizeGL(){ const r = pane.getBoundingClientRect(); if(!r.width||!r.height) return;
-  renderer.setSize(r.width, r.height, false); composer.setSize(r.width, r.height); camera.aspect = r.width/r.height; camera.updateProjectionMatrix(); if (!userMoved && FIT.h && !camAnim && !turntable) setCam('front', true); }
+  renderer.setSize(r.width, r.height, false); composer.setSize(r.width, r.height); camera.aspect = r.width/r.height; camera.updateProjectionMatrix(); invalidate(3); if (!userMoved && FIT.h && !camAnim && !turntable) setCam('front', true); }
 const CAMS = { front:[0,0.04,1], back:[0,0.04,-1], side:[0.72,0.08,0.7] };
 let camAnim = null, userMoved = false;
 controls.addEventListener('start', ()=>{ userMoved = true; $('hint').hidden = true; });
 function setCam(name, instant){ fitDist(); const to = new THREE.Vector3(...CAMS[name]).normalize().multiplyScalar(FIT.dist).add(new THREE.Vector3(0,FIT.cy,0));
   controls.target.set(0,FIT.cy,0);
-  if (instant){ camera.position.copy(to); controls.update(); return; }
+  if (instant){ camera.position.copy(to); controls.update(); invalidate(); return; }
   camAnim = {from:camera.position.clone(), to, t:0};
   document.querySelectorAll('[data-cam]').forEach(b=>b.setAttribute('aria-pressed', b.dataset.cam===name)); }
 document.querySelectorAll('[data-cam]').forEach(b=>b.onclick=()=>setCam(b.dataset.cam));
@@ -720,6 +815,7 @@ $('autoRot').onclick = ()=>{ controls.autoRotate = !controls.autoRotate; $('auto
 
 // drag / paint directly on the 3D shirt (raycast → UV → sheet)
 const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+let lastHover = 0;
 function hitUV(e){ const r = glc.getBoundingClientRect(); ndc.set(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1);
   ray.setFromCamera(ndc, camera); const h = ray.intersectObjects(shirtMeshes, false)[0]; return h && h.uv ? [h.uv.x*TEX, h.uv.y*TEX] : null; }
 let gdrag = null;
@@ -728,47 +824,69 @@ glc.addEventListener('pointerdown', e=>{
   if (BRUSH.on){
     const L = ensureBrushLayer(false); if (!L) return;
     select(L.id); stampBrush(L, uv[0], uv[1]);
-    gdrag = {mode:'brush', L, last:uv.slice()}; controls.enabled = false; glc.setPointerCapture(e.pointerId); composeSheet(); return;
+    gdrag = {mode:'brush', L, last:uv.slice(), piece:pieceAt(uv[0],uv[1])}; controls.enabled = false; glc.setPointerCapture(e.pointerId); composeSheet(); return;
   }
   const L = hitLayer(...uv, false); if(!L) return;
   select(L.id); if(L.locked) return;
   gdrag = {mode:'move', L, dx:uv[0]-L.x, dy:uv[1]-L.y}; controls.enabled = false; glc.setPointerCapture(e.pointerId);
 }, true);
 glc.addEventListener('pointermove', e=>{
-  if(!gdrag){ const uv=hitUV(e); glc.style.cursor = BRUSH.on ? (uv?'crosshair':'grab') : (uv && hitLayer(...uv,false) ? 'move' : 'grab'); return; }
+  if(!gdrag){ if (e.buttons) return; const now = performance.now(); if (now-lastHover < 40) return; lastHover = now; const uv=hitUV(e); glc.style.cursor = BRUSH.on ? (uv?'crosshair':'grab') : (uv && hitLayer(...uv,false) ? 'move' : 'grab'); return; }
   const uv = hitUV(e); if(!uv) return;
-  if (gdrag.mode==='brush'){ strokeBrush(gdrag.L, gdrag.last[0], gdrag.last[1], uv[0], uv[1]); gdrag.last=uv.slice(); composeSheet(); return; }
+  if (gdrag.mode==='brush'){ const p = pieceAt(uv[0],uv[1]); // a seam is a jump on the print sheet — never interpolate across it
+    if (p === gdrag.piece && Math.hypot(uv[0]-gdrag.last[0], uv[1]-gdrag.last[1]) < 12*PX) strokeBrush(gdrag.L, gdrag.last[0], gdrag.last[1], uv[0], uv[1]); else stampBrush(gdrag.L, uv[0], uv[1]);
+    gdrag.last=uv.slice(); gdrag.piece=p; composeSheet(); return; }
   // allow moving across pieces (front ↔ back ↔ sleeves) via UV
   gdrag.L.x = uv[0]-gdrag.dx; gdrag.L.y = uv[1]-gdrag.dy; composeSheet();
 });
 glc.addEventListener('pointerup', ()=>{ if(gdrag){ const was=gdrag; gdrag=null; controls.enabled = true; renderLayers(); commit(); } });
 glc.addEventListener('dblclick', e=>{ const uv = hitUV(e); const L = cur(); if(uv && L && L.kind!=='brush' && !L.inside){ L.x=uv[0]; L.y=uv[1]; composeSheet(); renderLayers(); commit(); } });
 
-let useAO = true, turntable = null, recMirror = null;
-function render(){ if (useAO) composer.render(); else renderer.render(scene, camera); }
-function loop(){ requestAnimationFrame(loop);
+let useAO = true, turntable = null, recMirror = null, recording = false;
+// Quality: 'high' = fold shadows (AO) on every frame · 'fast' = never · 'adaptive' = AO on, but if the GPU cannot keep
+// ~40 fps while the camera moves, skip the AO pass during motion and add it back on the first still frame.
+let QUALITY = 'adaptive'; try { QUALITY = localStorage.getItem('fb-quality') || 'adaptive'; } catch(_){}
+let liteMotion = false, slowFrames = 0, lastFrameT = 0, lastMoveT = 0, settled = true;
+function render(lite){ if (useAO && QUALITY!=='fast' && !lite) composer.render(); else renderer.render(scene, camera); }
+function loop(now){ requestAnimationFrame(loop);
+  if (composeDirty) composeNow();
+  if (patDirty) drawPatternNow();
+  if (recording) return; // the turntable recorder drives its own frames
   if (camAnim){ camAnim.t = Math.min(1, camAnim.t+0.045); const k = 1-Math.pow(1-camAnim.t,3);
     const tgt = controls.target, a = camAnim.from.clone().sub(tgt), b = camAnim.to.clone().sub(tgt); const ra = a.length(), rb = b.length();
     const dir = a.normalize().lerp(b.normalize(), k); if (dir.lengthSq()<1e-6) dir.set(1,0,0); dir.normalize();
-    camera.position.copy(dir.multiplyScalar(ra+(rb-ra)*k).add(tgt)); if(camAnim.t>=1) camAnim=null; }
-  if (turntable){ const t = Math.min(1,(performance.now()-turntable.t0)/turntable.ms); const a = t*Math.PI*2;
+    camera.position.copy(dir.multiplyScalar(ra+(rb-ra)*k).add(tgt)); if(camAnim.t>=1) camAnim=null; invalidate(1); }
+  let moved = false;
+  if (turntable){ const t = Math.min(1,(performance.now()-turntable.t0)/turntable.ms); const a = t*Math.PI*2; moved = true;
     camera.position.set(Math.sin(a)*FIT.dist, FIT.cy+0.04*FIT.dist, Math.cos(a)*FIT.dist); camera.lookAt(0,FIT.cy,0); if(t>=1){ const d=turntable.done; turntable=null; d(); } }
-  else controls.update();
+  else moved = controls.update() || !!camAnim;
+  if ($('stage').dataset.view==='pattern' && !recMirror) return; // 3D pane is collapsed
+  if (moved){ // frame pacing while the camera moves decides whether AO is affordable in motion
+    if (lastFrameT && now-lastFrameT < 200){ slowFrames = now-lastFrameT > 25 ? slowFrames+1 : Math.max(0, slowFrames-0.25); if (slowFrames > 10) liteMotion = true; }
+    lastMoveT = now; settled = false; }
+  else if (!settled && now-lastMoveT > 140){ settled = true; if (liteMotion) invalidate(1); }
+  lastFrameT = moved ? now : 0;
+  if (!moved && needRender <= 0 && !recMirror) return;
+  if (needRender > 0) needRender--;
   rig.rotation.y = Math.atan2(camera.position.x, camera.position.z);
-  render();
+  render(QUALITY==='adaptive' && liteMotion && moved && !recMirror);
   if (recMirror && recMirror.paint){ try { recMirror.paint(); } catch(_){} }
 }
+// any control in the page may change the picture: redraw a few frames after every interaction
+for (const t of ['input','change','click','keyup','pointerup']) addEventListener(t, ()=>invalidate(3), true);
+if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', ()=>{ drawPattern(); });
 
 // ---------- UI ----------
 function select(id){ S.sel = id; const L = cur(); if (L && !!L.inside!==PV.inside) $(L.inside?'pIn':'pOut').click(); renderLayers(); drawPattern(); }
 const thumbOf = L => {
   if (L.thumb) return L.thumb;
-  if (L.kind==='brush' && L.src){
-    const t=document.createElement('canvas'); t.width=t.height=64; const g=t.getContext('2d');
-    g.fillStyle='#e8e6e0'; g.fillRect(0,0,64,64); g.drawImage(L.src,0,0,TEX,TEX,0,0,64,64);
-    L.thumb = t.toDataURL(); return L.thumb;
-  }
-  return L.thumb = (L.src && L.src.toDataURL ? L.src.toDataURL() : (L.src && L.src.src) || '');
+  const src = L.src; if (!src) return '';
+  const t = document.createElement('canvas'); t.width = t.height = 72; const g = t.getContext('2d');
+  let bg = '#e8e6e0';
+  if (L.kind==='text' && /^#[0-9a-f]{6}$/i.test(L.color||'')){ const n = parseInt(L.color.slice(1),16); if ((((n>>16)&255)*0.3 + ((n>>8)&255)*0.59 + (n&255)*0.11) > 150) bg = '#2a2e28'; }
+  g.fillStyle = bg; g.fillRect(0,0,72,72);
+  try { const w = src.naturalWidth || src.width, h = src.naturalHeight || src.height; if (w && h){ const k = Math.min(64/w, 64/h); g.drawImage(src, (72-w*k)/2, (72-h*k)/2, w*k, h*k); } return L.thumb = t.toDataURL(); }
+  catch(_){ return src.src || ''; }
 };
 function renderLayers(){
   const box = $('layers'); box.innerHTML = '';
@@ -798,7 +916,7 @@ function syncLayerUI(){
   if ($('movePieceRow')) $('movePieceRow').hidden = isBrush;
   if (L.kind==='text'){ if (document.activeElement!==$('textVal')) $('textVal').value = L.text.replace(/\n/g,' / '); $('textFont').value = L.font; $('textFont').style.fontFamily = `"${L.font}", sans-serif`; $('textColor').value = L.color; }
   if (!isBrush){
-    $('lw').value = (L.w/PX).toFixed(1); $('lwo').textContent = `${(L.w/PX).toFixed(1)} cm`;
+    $('lw').value = (L.w/PX).toFixed(1); $('lwo').textContent = fmtLen(L.w/PX);
     $('lr').value = L.rot; $('lro').textContent = `${Math.round(L.rot)}°`;
   }
   $('lop').value = Math.round((L.opacity??1)*100); $('lopO').textContent = `${Math.round((L.opacity??1)*100)}%`;
@@ -807,7 +925,7 @@ function syncLayerUI(){
   if ($('movePiece') && !isBrush){
     const p = pieceAt(L.x,L.y);
     const sel = $('movePiece');
-    if (!sel.options.length){
+    if (sel.options.length !== SHOWN.length){ sel.innerHTML = '';
       for (const p of SHOWN){ const o=document.createElement('option'); o.value=p.id; o.textContent=p.label; sel.appendChild(o); }
     }
     if (p) sel.value = p.id;
@@ -832,8 +950,8 @@ $('addText').onclick = ()=>{ if(!ensureLayerRoom()) return; setBrushMode(false);
 $('addImage').onclick = ()=>{ if(!ensureLayerRoom()) return; setBrushMode(false); pendingPlace = null; $('file').click(); };
 if ($('brushTool')) $('brushTool').onclick = ()=> setBrushMode(!BRUSH.on);
 if ($('brushColor')){ $('brushColor').value = BRUSH.color; $('brushColor').oninput = e=>{ BRUSH.color = e.target.value; }; }
-if ($('brushSize')){ $('brushSize').value = BRUSH.sizeCm; $('brushSizeO').textContent = BRUSH.sizeCm.toFixed(1)+' cm';
-  $('brushSize').oninput = e=>{ BRUSH.sizeCm = +e.target.value; $('brushSizeO').textContent = BRUSH.sizeCm.toFixed(1)+' cm'; }; }
+if ($('brushSize')){ $('brushSize').value = BRUSH.sizeCm; $('brushSizeO').textContent = fmtLen(BRUSH.sizeCm);
+  $('brushSize').oninput = e=>{ BRUSH.sizeCm = +e.target.value; $('brushSizeO').textContent = fmtLen(BRUSH.sizeCm); }; }
 if ($('brushOp')){ $('brushOp').value = Math.round(BRUSH.opacity*100); $('brushOpO').textContent = Math.round(BRUSH.opacity*100)+'%';
   $('brushOp').oninput = e=>{ BRUSH.opacity = +e.target.value/100; $('brushOpO').textContent = Math.round(BRUSH.opacity*100)+'%'; }; }
 if ($('brushHard')){ $('brushHard').value = Math.round(BRUSH.hardness*100); $('brushHardO').textContent = Math.round(BRUSH.hardness*100)+'%';
@@ -842,17 +960,21 @@ if ($('brushEraser')) $('brushEraser').onclick = ()=>{ BRUSH.eraser = !BRUSH.era
 if ($('brushClear')) $('brushClear').onclick = ()=>{
   const L = cur() && cur().kind==='brush' ? cur() : [...S.layers].reverse().find(l=>l.kind==='brush' && !!l.inside===PV.inside);
   if (!L){ toast('No brush layer to clear'); return; }
-  L.src.getContext('2d').clearRect(0,0,TEX,TEX); L.thumb=null; composeSheet(); renderLayers(); commit();
+  L.src.getContext('2d').clearRect(0,0,TEX,TEX); L.thumb=null; L.rev=(L.rev|0)+1; composeSheet(); renderLayers(); commit();
 };
 if ($('movePiece')) $('movePiece').onchange = e=>{ const L=cur(); if(L) moveLayerToPiece(L, e.target.value); };
 if ($('moveFront')) $('moveFront').onclick = ()=>{ const L=cur(); if(L) moveLayerToPiece(L, 'front'); };
 if ($('moveBack')) $('moveBack').onclick = ()=>{ const L=cur(); if(L) moveLayerToPiece(L, 'back'); };
 addEventListener('keydown', e=>{
   if (e.target.matches('input,textarea,select')) return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key==='b' || e.key==='B'){ setBrushMode(!BRUSH.on); }
+  if (e.key==='v' || e.key==='V'){ $('toolSelect').click(); }
+  if (e.key==='h' || e.key==='H'){ $('toolPan').click(); }
+  if (e.key==='t' || e.key==='T'){ $('placeText').click(); }
   if (e.key==='e' || e.key==='E'){ if (BRUSH.on){ BRUSH.eraser=!BRUSH.eraser; if($('brushEraser')) $('brushEraser').setAttribute('aria-pressed', BRUSH.eraser); } }
-  if (e.key==='[' && BRUSH.on){ BRUSH.sizeCm = Math.max(0.2, +(BRUSH.sizeCm-0.2).toFixed(1)); if($('brushSize')){ $('brushSize').value=BRUSH.sizeCm; $('brushSizeO').textContent=BRUSH.sizeCm.toFixed(1)+' cm'; } }
-  if (e.key===']' && BRUSH.on){ BRUSH.sizeCm = Math.min(8, +(BRUSH.sizeCm+0.2).toFixed(1)); if($('brushSize')){ $('brushSize').value=BRUSH.sizeCm; $('brushSizeO').textContent=BRUSH.sizeCm.toFixed(1)+' cm'; } }
+  if (e.key==='[' && BRUSH.on){ BRUSH.sizeCm = Math.max(0.2, +(BRUSH.sizeCm-0.2).toFixed(1)); if($('brushSize')){ $('brushSize').value=BRUSH.sizeCm; $('brushSizeO').textContent=fmtLen(BRUSH.sizeCm); } }
+  if (e.key===']' && BRUSH.on){ BRUSH.sizeCm = Math.min(8, +(BRUSH.sizeCm+0.2).toFixed(1)); if($('brushSize')){ $('brushSize').value=BRUSH.sizeCm; $('brushSizeO').textContent=fmtLen(BRUSH.sizeCm); } }
   if (e.key==='Escape' && BRUSH.on) setBrushMode(false);
 });
 function placeImageFile(file, at=null){ if(!file || !file.type.startsWith('image/')) return; const img = new Image();
@@ -954,7 +1076,7 @@ async function serializeDesign(){
       layers.push({...base, name:L.name, dataUrl});
     }
   }
-  return {version:1, fabric:S.fabric, grad:S.grad, grad2:S.grad2, rib:S.rib, ribMatch:S.ribMatch, wash:S.wash, washStr:S.washStr, washSize:S.washSize, washPrints:S.washPrints, washSeed:S.washSeed, bg:S.bg, layers, sel:S.sel, uid};
+  return {version:1, garment:GID, sizeChart: SC.edited ? {source:SC.source, base:SC.baseSize, rows:SC.rows} : null, fabric:S.fabric, grad:S.grad, grad2:S.grad2, rib:S.rib, ribMatch:S.ribMatch, wash:S.wash, washStr:S.washStr, washSize:S.washSize, washPrints:S.washPrints, washSeed:S.washSeed, bg:S.bg, layers, sel:S.sel, uid};
 }
 async function applyDesign(data){
   if (!data || !data.layers) return;
@@ -977,6 +1099,7 @@ async function applyDesign(data){
       next.push({id:raw.id||++uid, kind:'image', name:raw.name||'Image', src:img, aspect:img.height/img.width, x:raw.x, y:raw.y, w:raw.w, rot:raw.rot||0, opacity:raw.opacity??1, flipX:!!raw.flipX, flipY:!!raw.flipY, locked:!!raw.locked, visible:raw.visible!==false, inside:!!raw.inside});
     }
   }
+  if (data.sizeChart && data.sizeChart.rows && (!data.garment || data.garment===GID)){ SC.source = data.sizeChart.source; SC.baseSize = data.sizeChart.base; SC.rows = data.sizeChart.rows; SC.edited = true; }
   S.layers = next; syncAllUI(); composeSheet(); renderLayers(); commit(); toast('Design loaded');
 }
 $('saveDesign').onclick = async ()=>{
@@ -1009,7 +1132,7 @@ async function exportPatternPng(){
   const c = await buildPatternPngCanvas();
   const blob = await canvasBlob(c); showModal({img:URL.createObjectURL(blob), blob, name:'pattern-sheet.png', txt:'2D sewing-pattern sheet with your prints.'});
 }
-$('exportPattern').onclick = ()=> exportPatternPng();
+$('exportPattern').onclick = ()=>{ flushCompose(); exportPatternPng(); };
 
 function pathToSvgD(p){
   const pts = p.pts; if (!pts.length) return '';
@@ -1052,7 +1175,7 @@ function specSheet(){
   const W=1800, H=1300, c=document.createElement('canvas'); c.width=W; c.height=H; const g=c.getContext('2d');
   g.fillStyle='#fbfaf7'; g.fillRect(0,0,W,H); g.fillStyle='#16130c';
   g.font='700 40px "Familjen Grotesk", sans-serif'; g.fillText('Fashion Builder — Tech pack', 60, 84);
-  g.font='18px "JetBrains Mono", monospace'; g.fillStyle='#555'; g.fillText(`${USER?'Raglan tee':'Oversized tee'} · men's crew neck · ${new Date().toISOString().slice(0,10)} · units: cm`, 60, 118);
+  g.font='18px "JetBrains Mono", monospace'; g.fillStyle='#555'; g.fillText(`${G.name} · ${G.sub} · ${new Date().toISOString().slice(0,10)} · units: cm`, 60, 118);
   const DB = SHOWN.map(dispBox); const bw = Math.max(...DB.map(b=>b[2]))-Math.min(...DB.map(b=>b[0])), bh = Math.max(...DB.map(b=>b[3]))-Math.min(...DB.map(b=>b[1]));
   const k = Math.min(900/bw, 1080/bh); g.save(); g.translate(60, 150); g.scale(k,k); g.translate(-Math.min(...DB.map(b=>b[0])), -Math.min(...DB.map(b=>b[1])));
   for (const p of SHOWN){ g.save(); g.translate(p.dx,p.dy); g.save(); g.clip(p.path); g.drawImage(tex,0,0); g.restore(); g.lineWidth=2/k; g.strokeStyle='#16130c'; g.setLineDash([10,6]); g.stroke(p.path); g.setLineDash([]);
@@ -1067,10 +1190,15 @@ function specSheet(){
     g.fillText(`  centre ${fromL.toFixed(1)} cm from left, ${fromT.toFixed(1)} cm from top · ${Math.round(L.rot)}°`, X, y); y+=34; if (y>H-40) break; }
   drawWatermark(g, W, H);
   return c; }
-async function zipOf(files){ if (!window.JSZip) { toast('ZIP library did not load. Check your connection and try again.'); return null; }
+let _zipLoad = null;
+const loadJSZip = () => window.JSZip ? Promise.resolve() : (_zipLoad ||= new Promise((res,rej)=>{ const sc = document.createElement('script'); sc.src = 'assets/vendor/jszip.min.js'; sc.onload = res; sc.onerror = ()=>{ _zipLoad = null; rej(new Error('zip')); }; document.head.appendChild(sc); }));
+async function zipOf(files){ try { await loadJSZip(); } catch(_){} if (!window.JSZip) { toast('ZIP library did not load. Check your connection and try again.'); return null; }
   const z = new JSZip(); for (const [n,b] of files) z.file(n, b); return z.generateAsync({type:'blob'}); }
 
+// the GL canvas is not preserved between frames: copy it in the same task as the render
+const snapGL = () => { const c = document.createElement('canvas'); c.width = glc.width; c.height = glc.height; c.getContext('2d').drawImage(glc,0,0); return c; };
 async function capture3dPng({mode='catalogue'}={}){
+  flushCompose();
   const pr = renderer.getPixelRatio();
   const prevClear = renderer.getClearColor(new THREE.Color()).getHex();
   const prevAlpha = renderer.getClearAlpha();
@@ -1080,15 +1208,15 @@ async function capture3dPng({mode='catalogue'}={}){
   try {
     if (mode === 'catalogue'){
       renderer.setPixelRatio(Math.min(devicePixelRatio,2)*2); resizeGL(); render();
-      const c = await withWatermarkCanvas(glc);
+      const shot = snapGL(), c = await withWatermarkCanvas(shot);
       const blob = await canvasBlob(c);
-      return {blob, w: glc.width, h: glc.height, name:'catalogue-render.png', txt:`Catalogue render at ${glc.width/2}×${glc.height/2}px ×2.`};
+      return {blob, w: shot.width, h: shot.height, name:'catalogue-render.png', txt:`Catalogue render at ${shot.width/2}×${shot.height/2}px ×2.`};
     }
     if (mode === 'dark'){
       renderer.setPixelRatio(Math.min(devicePixelRatio,2)*2); resizeGL();
       backdrop.visible = false; scene.background = new THREE.Color('#141613');
       renderer.setClearColor('#141613', 1); render();
-      const c = await withWatermarkCanvas(glc);
+      const c = await withWatermarkCanvas(snapGL());
       const blob = await canvasBlob(c);
       return {blob, name:'3d-dark.png', txt:'3D snapshot with a dark studio background.'};
     }
@@ -1106,7 +1234,7 @@ async function capture3dPng({mode='catalogue'}={}){
       return {blob, name:'3d-transparent.png', txt:'3D snapshot with transparent background (best-effort).'};
     }
   } finally {
-    renderer.setPixelRatio(pr); resizeGL();
+    renderer.setPixelRatio(pr); resizeGL(); invalidate(4);
     backdrop.visible = bdVisible; scene.background = prevBg;
     renderer.setClearColor(prevClear, prevAlpha); renderer.autoClear = prevAutoClear;
   }
@@ -1120,14 +1248,14 @@ function showRecProgress(on, pct=0, label){
   $('recProgressPct').textContent = Math.round(pct*100)+'%';
 }
 
-async function recordTurntable(){
+async function recordTurntableInner(){
   if (!requirePro('Turntable video')) return;
   if (!window.MediaRecorder){ toast('Video recording is not supported in this browser.'); return; }
   const savedPos = camera.position.clone();
   const savedTarget = controls.target.clone();
   const wasAuto = $('autoRot')?.getAttribute('aria-pressed') === 'true';
   if (wasAuto) $('autoRot').click();
-  const prevEnabled = controls.enabled; controls.enabled = false;
+  const prevEnabled = controls.enabled; controls.enabled = false; recording = true; flushCompose();
 
   const fps = 24, seconds = 5, total = fps * seconds; // ~5s turntable
   fitDist();
@@ -1184,7 +1312,7 @@ async function recordTurntable(){
   mirror.remove();
 
   camera.position.copy(savedPos); controls.target.copy(savedTarget); controls.update();
-  controls.enabled = prevEnabled;
+  controls.enabled = prevEnabled; recording = false; invalidate(4);
   showRecProgress(false);
 
   const blobType = (mime && mime.startsWith('video/')) ? mime.split(';')[0] : 'video/webm';
@@ -1195,6 +1323,10 @@ async function recordTurntable(){
   showModal({video:URL.createObjectURL(blob), blob, name:`turntable.${ext}`, txt:`5-second 360° turntable · ${total} frames · ${(blob.size/1024).toFixed(0)} KB. Camera restored.`});
 }
 
+async function recordTurntable(){ try { await recordTurntableInner(); } finally { if (recording){ recording = false; controls.enabled = true; showRecProgress(false); invalidate(4); } } }
+// several trims share a label ("Neck tape" ×8): keep file names unique so none is overwritten inside the ZIP
+const _labelN = {}; pieces.forEach(p=>{ _labelN[p.label] = (_labelN[p.label]||0)+1; });
+const pieceFile = p => (_labelN[p.label] > 1 ? `${p.label} (${p.id})` : p.label).replace(/[\\/:*?"<>|]+/g,'-');
 const EXPORTS = {
   async catalogue(){ const r = await capture3dPng({mode:'catalogue'}); showModal({img:URL.createObjectURL(r.blob), blob:r.blob, name:r.name, txt:r.txt}); },
   async snapDark(){ const r = await capture3dPng({mode:'dark'}); showModal({img:URL.createObjectURL(r.blob), blob:r.blob, name:r.name, txt:r.txt}); },
@@ -1202,20 +1334,22 @@ const EXPORTS = {
   async patternPng(){ await exportPatternPng(); },
   async patternSvg(){ await exportPatternSvg(); },
   async print(){ const files = [];
-    for (const p of pieces){ files.push([`pieces/${p.label}.png`, await canvasBlob(pieceCanvas(p))]); if (S.layers.some(l=>l.inside&&l.visible&&pieceAt(l.x,l.y)===p)) files.push([`pieces/${p.label} (inside).png`, await canvasBlob(pieceCanvas(p,0,true))]); }
+    for (const p of pieces){ files.push([`pieces/${pieceFile(p)}.png`, await canvasBlob(pieceCanvas(p))]); if (S.layers.some(l=>l.inside&&l.visible&&pieceAt(l.x,l.y)===p)) files.push([`pieces/${pieceFile(p)} (inside).png`, await canvasBlob(pieceCanvas(p,0,true))]); }
     for (const L of S.layers.filter(l=>l.visible)){ const c=document.createElement('canvas'); c.width=L.src.width; c.height=L.src.height; c.getContext('2d').drawImage(L.src,0,0); files.push([`prints/${layerName(L).replace(/[^\w\- ]+/g,'').slice(0,40)||'print'}-${L.id}.png`, await canvasBlob(c)]); }
     const spec = specSheet(); files.push(['spec-sheet.png', await canvasBlob(spec)]);
+    files.push(['size-chart.csv', new Blob([scCsv()], {type:'text/csv'})]); files.push(['size-chart.png', await canvasBlob(scPngCanvas())]);
     const blob = await zipOf(files); if (!blob) return; download(blob, 'print-files.zip');
     showModal({img:spec.toDataURL(), blob, name:'print-files.zip', txt:`Print files: ${files.length} files (pieces, prints and this spec sheet) in one ZIP.`}); },
-  async sublimation(){ const files = []; for (const p of pieces) files.push([`${p.label} — 1cm bleed.png`, await canvasBlob(pieceCanvas(p,1))]);
+  async sublimation(){ const files = []; for (const p of pieces) files.push([`${pieceFile(p)} — 1cm bleed.png`, await canvasBlob(pieceCanvas(p,1))]);
     const blob = await zipOf(files); if (!blob) return; download(blob, 'sublimation-panels.zip');
     showModal({img:pieceCanvas(pieceById.front,1).toDataURL(), blob, name:'sublimation-panels.zip', txt:`${files.length} full panels with 1 cm bleed at ${PX} px/cm (≈ 41 dpi preview scale; scale up in your RIP).`}); },
   async spec(){ const c = specSheet(); const blob = await canvasBlob(c); showModal({img:c.toDataURL(), blob, name:'spec-sheet.png', txt:'Spec sheet with print sizes and positions.'}); },
   async turntable(){ await recordTurntable(); },
+  async sizeChart(){ openSizeChart(); },
 };
 $('exportBtn').onclick = e=>{ e.stopPropagation(); const m=$('exportMenu'); m.hidden = !m.hidden; $('exportBtn').setAttribute('aria-expanded', !m.hidden); };
-document.addEventListener('click', e=>{ if(!e.target.closest('.menuwrap')){ $('exportMenu').hidden = true; $('exportBtn').setAttribute('aria-expanded', false); if($('accountMenu')){ $('accountMenu').hidden = true; $('accountBtn')?.setAttribute('aria-expanded', false); } } });
-document.querySelectorAll('[data-exp]').forEach(b=>b.onclick = ()=>{ $('exportMenu').hidden = true; EXPORTS[b.dataset.exp]().catch(err=>{ console.error(err); toast('Export failed: '+err.message); }); });
+document.addEventListener('click', e=>{ if(!e.target.closest('.menuwrap')){ $('exportMenu').hidden = true; $('exportBtn').setAttribute('aria-expanded', false); if($('accountMenu')){ $('accountMenu').hidden = true; $('accountBtn')?.setAttribute('aria-expanded', false); } if($('garmentMenu')){ $('garmentMenu').hidden = true; $('garmentBtn').setAttribute('aria-expanded', false); } } });
+document.querySelectorAll('[data-exp]').forEach(b=>b.onclick = ()=>{ $('exportMenu').hidden = true; flushCompose(); EXPORTS[b.dataset.exp]().catch(err=>{ console.error(err); toast('Export failed: '+err.message); }); });
 $('snap').onclick = async ()=>{ const r = await capture3dPng({mode:'catalogue'}); showModal({img:URL.createObjectURL(r.blob), blob:r.blob, name:'3d-snapshot.png', txt:r.txt}); };
 
 // ---------- Invite gate, account, (hidden) pricing, designs ----------
@@ -1418,40 +1552,232 @@ async function handleDecideLink(){
 }
 $('decideClose') && ($('decideClose').onclick = ()=> { $('decideModal').hidden = true; });
 
+// ---------- pattern tools · zoom · units · trims ----------
+function setTool(t){ TOOL = t; $('toolSelect').setAttribute('aria-pressed', t==='select'); $('toolPan').setAttribute('aria-pressed', t==='pan'); pc.style.cursor = 'grab'; }
+$('toolSelect').onclick = ()=>{ setBrushMode(false); pendingImage = null; setPlaceMode(null); setTool('select'); };
+$('toolPan').onclick = ()=>{ if (TOOL==='pan'){ setTool('select'); return; } setBrushMode(false); pendingImage = null; setPlaceMode(null); setTool('pan'); };
+$('railBrush').onclick = ()=>{ setTool('select'); setBrushMode(!BRUSH.on); };
+function zoomBy(f){ const r = pc.getBoundingClientRect(), vx = r.width/2, vy = r.height/2, [sx,sy] = toSheet(vx,vy);
+  PV.k = Math.min(PV.fitK*12, Math.max(PV.fitK*0.25, PV.k*f)); PV.ox = vx - sx*PV.k; PV.oy = vy - sy*PV.k; drawPattern(); }
+$('zoomIn').onclick = ()=> zoomBy(1.25); $('zoomOut').onclick = ()=> zoomBy(0.8);
+$('gridT').onclick = ()=>{ PV.grid = !PV.grid; $('gridT').setAttribute('aria-pressed', PV.grid); drawPattern(); };
+function setUnit(u){ UNIT = u; try { localStorage.setItem('fb-unit', u); } catch(_){}
+  document.querySelectorAll('[data-unit]').forEach(b=>b.setAttribute('aria-pressed', b.dataset.unit===u));
+  if ($('brushSizeO')) $('brushSizeO').textContent = fmtLen(BRUSH.sizeCm); syncLayerUI(); drawPattern(); }
+document.querySelectorAll('[data-unit]').forEach(b=>{ b.onclick = ()=> setUnit(b.dataset.unit); b.setAttribute('aria-pressed', b.dataset.unit===UNIT); });
+$('trimsT').onclick = ()=>{ showTrims = !showTrims; $('trimsT').setAttribute('aria-pressed', showTrims); { const r = pc.getBoundingClientRect(); layoutPieces(r.width, r.height); }
+  $('pcCount').textContent = `${SHOWN.length} pieces`; fitPattern(); syncLayerUI();
+  if (showTrims) toast('Showing trims: inner hems and cuffs, facings, neck tapes'); };
+
+// ---------- garment picker · render quality ----------
+$('gName').textContent = G.name; $('gSub').textContent = G.sub; if ($('fabricGarment')) $('fabricGarment').textContent = G.name; if ($('fabricSub')) $('fabricSub').textContent = G.sub;
+{ const gm = $('garmentMenu');
+  for (const [id,g] of Object.entries(GARMENTS)){ const b = document.createElement('button'); b.setAttribute('role','menuitemradio'); b.setAttribute('aria-checked', id===GID);
+    const t = document.createElement('b'); t.textContent = g.name; const d = document.createElement('span'); d.textContent = g.sub; b.append(t, d);
+    b.onclick = ()=>{ gm.hidden = true; if (id===GID) return;
+      if (hist.length > 1 && !confirm('Switch garment? Unsaved changes to this design will be lost.')) return;
+      const u = new URL(location.href); if (id==='raglan') u.searchParams.delete('g'); else u.searchParams.set('g', id); location.href = u.toString(); };
+    gm.appendChild(b); }
+  const more = document.createElement('p'); more.className = 'sub'; more.textContent = 'More garments are on the way.'; gm.appendChild(more);
+  $('garmentBtn').onclick = e=>{ e.stopPropagation(); gm.hidden = !gm.hidden; $('garmentBtn').setAttribute('aria-expanded', !gm.hidden); $('exportMenu').hidden = true; $('accountMenu').hidden = true; }; }
+$('quality').value = QUALITY;
+$('quality').onchange = e=>{ QUALITY = e.target.value; try { localStorage.setItem('fb-quality', QUALITY); } catch(_){} liteMotion = false; slowFrames = 0; invalidate(3); };
+
+// ---------- size chart (graded spec for the factory) ----------
+// Widths are flat, edge to edge (half measurements), as a factory QC table expects. Every cell stays editable.
+const SIZES = ['XS','S','M','L','XL','2XL','3XL'];
+const POMS = [
+  {c:'A', n:'Chest width',        he:'רוחב חזה',                  how:'2.5 cm below the armhole, edge to edge',            grade:5,   tol:1},
+  {c:'B', n:'Bottom hem width',   he:'רוחב מכפלת תחתונה',         how:'Edge to edge at the hem',                           grade:5,   tol:1},
+  {c:'C', n:'Body length (HPS)',  he:'אורך גוף מנקודת כתף גבוהה', how:'High point shoulder straight down to the hem',      grade:2.5, tol:1.5},
+  {c:'D', n:'Centre back length', he:'אורך גב מרכזי',             how:'Back neck seam to the hem, along centre back',      grade:2.5, tol:1.5},
+  {c:'E', n:'Sleeve length',      he:'אורך שרוול',                how: G.sleeve==='raglan' ? 'Neck seam to sleeve hem, along the top fold (raglan)' : 'Shoulder seam to sleeve hem, along the top fold', grade:1.5, tol:1},
+  {c:'F', n:'Sleeve opening',     he:'פתח שרוול',                 how:'Edge to edge at the sleeve hem',                    grade:1,   tol:0.5},
+  {c:'G', n:'Upper arm width',    he:'רוחב זרוע עליונה',          how:'2.5 cm below the armhole, square to the top fold',  grade:1,   tol:0.5},
+  {c:'H', n:'Neck width',         he:'רוחב צווארון',              how:'Seam to seam, straight across',                     grade:0.5, tol:0.5},
+  {c:'I', n:'Front neck drop',    he:'עומק צווארון קדמי',         how:'From the HPS line down to the front neck seam',     grade:0.3, tol:0.3},
+  {c:'J', n:'Back neck drop',     he:'עומק צווארון אחורי',        how:'From the HPS line down to the back neck seam',      grade:0,   tol:0.3},
+  {c:'K', n:'Neck rib height',    he:'גובה ריב צווארון',          how:'Finished height of the neck rib',                   grade:0,   tol:0.2},
+  {c:'L', n:'Hem height',         he:'גובה מכפלת',                how:'Finished height of the hem / hem band',             grade:0,   tol:0.2},
+  {c:'M', n:'Sleeve hem height',  he:'גובה מכפלת שרוול',          how:'Finished height of the sleeve hem / cuff',          grade:0,   tol:0.2},
+];
+const RAG = G.sleeve==='raglan';
+const SC_PRESETS = {
+  classic:   {base:'M', v:{A:51, B:51, C:73.5, D:71,   E:RAG?36:21,   F:18,   G:20.5, H:18.5, I:9.5, J:2.5, K:2,   L:2.5, M:2.5}, grade:{}},
+  oversized: {base:'M', v:{A:58, B:58, C:74,   D:71.5, E:RAG?39.5:24, F:20.5, G:24,   H:19.5, I:9.5, J:2.5, K:2.2, L:2.5, M:2.5}, grade:{A:4, B:4, C:2, D:2}},
+};
+const SC = {source:'pattern', base:null, baseSize:'M', rows:null, auto:{}, edited:false, unit:'cm'};
+function chordAt(p, y){ let lo = Infinity, hi = -Infinity; const pts = p.pts, n = pts.length;
+  for (let i=0;i<n;i++){ const [x0,y0] = pts[i], [x1,y1] = pts[(i+1)%n]; if (y0===y1 || (y0-y)*(y1-y) > 0) continue; const x = x0+(x1-x0)*(y-y0)/(y1-y0); if (x<lo) lo = x; if (x>hi) hi = x; }
+  return hi > lo ? hi-lo : 0; }
+function stripHeight(p){ // mean width of a (possibly curved) strip = area / half its perimeter, in px
+  let per = 0, ar = 0; const pts = p.pts, n = pts.length; for (let i=0;i<n;i++){ const [x0,y0] = pts[i], [x1,y1] = pts[(i+1)%n]; per += Math.hypot(x1-x0,y1-y0); ar += x0*y1-x1*y0; }
+  return per ? Math.abs(ar)/per : 0; }
+// Measure the flat pattern (true cm: each piece carries its own cm-per-UV scale).
+function measurePattern(){
+  const m = {}, sc = p => pieceScale(p)/PX, W = p => (p.box[2]-p.box[0])*sc(p), H = p => (p.box[3]-p.box[1])*sc(p);
+  const find = re => pieces.find(p=>re.test(p.label||'') && !/inner/i.test(p.label||''));
+  const f = pieceById.front, b = pieceById.back, hemF = find(/^Hem band.*front/i), hemB = find(/^Hem band.*back/i), cuff = find(/cuff/i);
+  if (f){ const h = f.box[3]-f.box[1]; let maxW = 0; const rows = [];
+    for (let i=1;i<80;i++){ const y = f.box[1]+h*i/80, w = chordAt(f,y); rows.push([y,w]); if (w>maxW) maxW = w; }
+    const arm = rows.find(r=>r[1] >= maxW*0.97) || rows[rows.length>>1]; // armhole level = first full-width row from the top
+    m.A = (chordAt(f, Math.min(f.box[3]-2, arm[0]+2.5/sc(f))) || maxW)*sc(f);
+    m.B = (chordAt(f, f.box[3]-h*0.02) || maxW)*sc(f); }
+  if (hemF){ m.B = W(hemF); m.L = H(hemF); }
+  if (b) m.D = H(b) + (hemB ? H(hemB) : 0);
+  if (G3D.h) m.C = G3D.h; // garment height as draped on the hanger: HPS to hem
+  const sF = pieceById.sleeveR || pieceById.sleeveL, sB = pieceById.sleeveRb || pieceById.sleeveLb;
+  if (sF){ const parts = [sF, sB].filter(Boolean); m.E = H(sF) + (cuff ? H(cuff) : 0);
+    const bottom = parts.reduce((a,p)=>a + chordAt(p, p.box[3]-(p.box[3]-p.box[1])*0.03)*sc(p), 0);
+    const widest = parts.reduce((a,p)=>{ let w = 0; const h = p.box[3]-p.box[1]; for (let i=1;i<40;i++) w = Math.max(w, chordAt(p, p.box[1]+h*i/40)); return a + w*sc(p); }, 0);
+    const gus = pieces.find(p=>/facing/i.test(p.label||'') && !p.minor); // underarm strip sewn between the two sleeve halves
+    m.F = cuff ? W(cuff)/2 : bottom/2; m.G = (widest + (sB && gus ? Math.min(W(gus), H(gus)) : 0))/2; }
+  if (cuff) m.M = H(cuff);
+  const ribF = pieceById.rib, ribB = find(/^Neck rib.*back/i);
+  if (ribF){ const k = stripHeight(ribF)*sc(ribF);
+    if (W(ribF) < 6*H(ribF)){ m.K = k; m.H = Math.max(W(ribF), ribB ? W(ribB) : 0); m.I = Math.max(0.5, H(ribF)-k); if (ribB) m.J = Math.max(0.5, H(ribB)-stripHeight(ribB)*sc(ribB)); } // curved (U-shaped) rib piece
+    else m.K = Math.min(W(ribF), H(ribF)) / (PATTERN.source==='user' ? 1 : 2); } // straight strip (cut double, folded)
+  if (!m.H && f){ const top = f.pts.filter(q=>q[1] < f.box[1]+0.6*PX); if (top.length > 1) m.H = (Math.max(...top.map(q=>q[0]))-Math.min(...top.map(q=>q[0])))*sc(f); }
+  return m;
+}
+const scNearestSize = chest => { let best = 2, d = Infinity; SIZES.forEach((_,i)=>{ const e = Math.abs(chest-(51+5*(i-2))); if (e<d){ d = e; best = i; } }); return SIZES[best]; };
+const SC_DETECT = () => { try { const a = measurePattern().A; return a ? scNearestSize(a) : 'M'; } catch(_){ return 'M'; } };
+const r1 = v => Math.round(v*10)/10;
+function scBuild(){
+  let baseVals, baseSize, grades = {}; SC.auto = {};
+  if (SC.source === 'pattern'){ const m = measurePattern(), pre = SC_PRESETS.classic; baseSize = SC.base || scNearestSize(m.A || 51); const bi = SIZES.indexOf(baseSize); baseVals = {};
+    for (const P of POMS){ if (m[P.c] > 0){ baseVals[P.c] = m[P.c]; SC.auto[P.c] = true; } else baseVals[P.c] = pre.v[P.c] + P.grade*(bi-SIZES.indexOf(pre.base)); } }
+  else { const pre = SC_PRESETS[SC.source]; baseSize = pre.base; baseVals = pre.v; grades = pre.grade; }
+  const bi = SIZES.indexOf(baseSize);
+  SC.rows = POMS.map(P=>{ const g = grades[P.c] ?? P.grade; return {c:P.c, grade:g, tol:P.tol, v:SIZES.map((_,i)=> Math.max(0.5, r1(baseVals[P.c] + g*(i-bi))))}; });
+  SC.baseSize = baseSize; SC.edited = false;
+}
+const scStoreKey = 'fb-sizechart-v1-'+GID;
+function scSave(){ SC.edited = true; try { localStorage.setItem(scStoreKey, JSON.stringify({source:SC.source, base:SC.baseSize, rows:SC.rows})); } catch(_){} }
+function scEnsure(){ if (SC.rows) return;
+  try { const o = JSON.parse(localStorage.getItem(scStoreKey) || 'null'); if (o && Array.isArray(o.rows) && o.rows.length === POMS.length){ SC.source = o.source || 'pattern'; SC.baseSize = o.base || 'M'; SC.base = SC.baseSize; SC.rows = o.rows; SC.edited = true; return; } } catch(_){}
+  scBuild(); }
+const inFrac = cm => { const e = Math.round(cm/2.54*8), w = Math.floor(e/8), f = e%8; if (!f) return String(w); const d = f%4===0 ? [f/4,2] : f%2===0 ? [f/2,4] : [f,8]; return (w ? w+' ' : '')+d[0]+'/'+d[1]; };
+const scFmt = cm => SC.unit==='in' ? inFrac(cm) : (Math.round(cm*10)/10).toString();
+function scRender(){
+  scEnsure();
+  const t = $('scTable'), bi = SIZES.indexOf(SC.baseSize), ro = SC.unit==='in';
+  $('scSource').value = SC.source; $('scBaseRow').hidden = SC.source !== 'pattern';
+  if (!$('scBase').options.length) for (const z of SIZES){ const o = document.createElement('option'); o.value = o.textContent = z; $('scBase').appendChild(o); }
+  $('scBase').value = SC.baseSize; $('scCm').setAttribute('aria-pressed', !ro); $('scIn').setAttribute('aria-pressed', ro);
+  t.innerHTML = '';
+  const head = t.createTHead().insertRow();
+  for (const [h, cls] of [['',''],['Point of measure','pom'], ...SIZES.map((z,i)=>[z, i===bi?'base':'']), ['Tol ±','tol'], ['Grade','tol']]){ const th = document.createElement('th'); th.textContent = h; if (cls) th.className = cls; th.scope = 'col'; head.appendChild(th); }
+  const body = t.createTBody();
+  SC.rows.forEach((R, ri)=>{ const P = POMS[ri], tr = body.insertRow();
+    const code = tr.insertCell(); code.className = 'code'; code.textContent = P.c;
+    const pm = tr.insertCell(); pm.className = 'pom'; const nb = document.createElement('b'); nb.textContent = P.n; const he = document.createElement('span'); he.dir = 'rtl'; he.textContent = P.he;
+    const how = document.createElement('small'); how.textContent = P.how; pm.append(nb, he, how); if (SC.source==='pattern' && SC.auto[P.c]) pm.classList.add('auto');
+    const cell = (val, cls, onset, label) => { const td = tr.insertCell(); if (cls) td.className = cls;
+      if (ro){ td.textContent = scFmt(val); return; }
+      const inp = document.createElement('input'); inp.type = 'number'; inp.step = '0.1'; inp.min = '0'; inp.value = r1(val); inp.setAttribute('aria-label', `${P.n}, ${label}`);
+      inp.onchange = ()=>{ const v = parseFloat(inp.value); if (!isFinite(v) || v < 0){ inp.value = r1(val); return; } onset(r1(v)); scSave(); scRender(); };
+      td.appendChild(inp); };
+    R.v.forEach((v, i)=> cell(v, i===bi ? 'base' : '', nv => { if (i===bi){ const d = nv-R.v[bi]; R.v = R.v.map(x=>Math.max(0.1, r1(x+d))); } else R.v[i] = nv; }, 'size '+SIZES[i]));
+    cell(R.tol, 'tol', nv => { R.tol = nv; }, 'tolerance');
+    cell(R.grade, 'tol', nv => { R.grade = nv; R.v = R.v.map((_,i)=>Math.max(0.1, r1(R.v[bi]+nv*(i-bi)))); }, 'grade per size');
+  });
+  const det = SC.source==='pattern';
+  $('scNote').textContent = det
+    ? `${G.name}: the pattern on the table is cut as size ${SC.baseSize} (chest ${scFmt(SC.rows[0].v[bi])} ${SC.unit==='in'?'in':'cm'} flat). The other sizes are graded from it.`
+    : `Standard men's crew-neck tee, ${SC.source==='classic'?'classic':'oversized'} fit — not measured from this pattern.`;
+  scDrawDiagram($('scDiagram').getContext('2d'), 320, 300, '#d9e4d2', '#f2c14e', '#1b1e1a');
+}
+// flat sketch with the measurement letters
+function scDrawDiagram(g, w, h, ink, accent, paper){
+  const d = g.canvas === $('scDiagram') ? (devicePixelRatio||1) : 1;
+  if (g.canvas === $('scDiagram')){ g.canvas.width = w*d; g.canvas.height = h*d; g.setTransform(d,0,0,d,0,0); g.clearRect(0,0,w,h); }
+  g.save(); g.scale(w/320, h/300); g.lineJoin = 'round'; g.lineCap = 'round';
+  g.strokeStyle = ink; g.lineWidth = 1.6; g.beginPath();
+  g.moveTo(130,44); g.quadraticCurveTo(160,70,190,44); g.lineTo(248,64); g.lineTo(296,116); g.lineTo(266,138); g.lineTo(236,108); g.lineTo(236,276); g.lineTo(84,276); g.lineTo(84,108); g.lineTo(54,138); g.lineTo(24,116); g.lineTo(72,64); g.closePath(); g.stroke();
+  g.lineWidth = 1; g.globalAlpha = 0.55; g.beginPath(); g.moveTo(130,44); g.quadraticCurveTo(160,54,190,44); g.moveTo(84,264); g.lineTo(236,264); g.moveTo(30,121); g.lineTo(60,143); g.moveTo(290,121); g.lineTo(260,143);
+  if (RAG){ g.moveTo(130,44); g.quadraticCurveTo(104,84,84,108); g.moveTo(190,44); g.quadraticCurveTo(216,84,236,108); } else { g.moveTo(72,64); g.lineTo(84,108); g.moveTo(248,64); g.lineTo(236,108); }
+  g.stroke(); g.globalAlpha = 1;
+  const dim = (x0,y0,x1,y1,letter,lx,ly) => { g.strokeStyle = accent; g.fillStyle = accent; g.lineWidth = 1.2; g.beginPath(); g.moveTo(x0,y0); g.lineTo(x1,y1); g.stroke();
+    const a = Math.atan2(y1-y0,x1-x0); for (const [x,y,s] of [[x0,y0,1],[x1,y1,-1]]){ g.beginPath(); g.moveTo(x,y); g.lineTo(x+s*5*Math.cos(a-0.5), y+s*5*Math.sin(a-0.5)); g.moveTo(x,y); g.lineTo(x+s*5*Math.cos(a+0.5), y+s*5*Math.sin(a+0.5)); g.stroke(); }
+    const cx = lx ?? (x0+x1)/2, cy = ly ?? (y0+y1)/2; g.beginPath(); g.arc(cx,cy,8.5,0,Math.PI*2); g.fillStyle = accent; g.fill(); g.fillStyle = paper; g.font = '700 10.5px "Familjen Grotesk", Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(letter, cx, cy+0.5); };
+  dim(86,126,234,126,'A',144,126); dim(86,252,234,252,'B',144,252); dim(130,46,130,274,'C',130,176); dim(176,52,176,274,'D',176,208);
+  if (RAG) dim(198,36,300,106,'E',254,62); else dim(254,56,300,106,'E',284,76);
+  dim(304,124,274,146,'F',300,146); dim(84,108,56,82,'G',62,100); dim(130,30,190,30,'H'); dim(160,44,160,57,'I',160,72);
+  g.restore(); g.textBaseline = 'alphabetic';
+}
+function scCsv(){ scEnsure(); const q = v => { v = String(v); return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; }, u = SC.unit==='in' ? 'inch' : 'cm';
+  const L = [['Fashion Builder — size chart', G.name, G.sub, new Date().toISOString().slice(0,10)], ['Units', u, 'Garment laid flat. Widths are edge to edge (half measurements).'],
+    ['Base size', SC.baseSize, SC.source==='pattern' ? 'Measured from the pattern, other sizes graded' : 'Standard '+SC.source+' fit'], [],
+    ['Code','Point of measure','נקודת מדידה','How to measure', ...SIZES, 'Tolerance ±','Grade per size']];
+  SC.rows.forEach((R,i)=> L.push([R.c, POMS[i].n, POMS[i].he, POMS[i].how, ...R.v.map(scFmt), scFmt(R.tol), scFmt(R.grade)]));
+  return '﻿' + L.map(r=>r.map(q).join(',')).join('\r\n') + '\r\n'; }
+function scPngCanvas(){ scEnsure(); const W = 2000, rowH = 62, top = 250, H = top + rowH*(POMS.length+1) + 150, c = document.createElement('canvas'); c.width = W; c.height = Math.max(H, 1180); const g = c.getContext('2d');
+  g.fillStyle = '#fbfaf7'; g.fillRect(0,0,W,c.height); g.fillStyle = '#16130c'; g.font = '700 44px "Familjen Grotesk", Arial, sans-serif'; g.fillText('Size chart', 60, 92);
+  g.font = '20px "JetBrains Mono", monospace'; g.fillStyle = '#555'; const u = SC.unit==='in' ? 'inch' : 'cm';
+  g.fillText(`${G.name} · ${G.sub} · ${new Date().toISOString().slice(0,10)} · units: ${u} · base size ${SC.baseSize}`, 60, 132);
+  g.fillText('Garment laid flat. Widths are edge to edge (half measurements). Tolerances are ± per measurement.', 60, 164);
+  const x0 = 60, cw = 108, xs = 60+470, bi = SIZES.indexOf(SC.baseSize), xt = xs + cw*SIZES.length;
+  g.fillStyle = '#efece3'; g.fillRect(x0, top-rowH+18, xt+cw*2-x0, rowH-10); g.fillStyle = 'rgba(242,193,78,.35)'; g.fillRect(xs+cw*bi, top-rowH+18, cw, rowH*(POMS.length+1)-10);
+  g.fillStyle = '#16130c'; g.font = '700 21px "Familjen Grotesk", Arial, sans-serif'; g.fillText('Point of measure', x0+52, top-8); g.textAlign = 'center';
+  SIZES.forEach((z,i)=> g.fillText(z, xs+cw*i+cw/2, top-8)); g.fillText('Tol ±', xt+cw/2, top-8); g.fillText('Grade', xt+cw*1.5, top-8);
+  SC.rows.forEach((R, i)=>{ const y = top + rowH*(i+1) - 22, P = POMS[i]; g.strokeStyle = '#d9d4c6'; g.lineWidth = 1; g.beginPath(); g.moveTo(x0, y+22.5); g.lineTo(xt+cw*2, y+22.5); g.stroke();
+    g.textAlign = 'center'; g.fillStyle = '#16130c'; g.font = '700 22px "Familjen Grotesk", Arial, sans-serif'; g.fillText(P.c, x0+22, y);
+    g.textAlign = 'left'; g.font = '600 21px "Familjen Grotesk", Arial, sans-serif'; g.fillText(P.n, x0+52, y-8); g.font = '14px "JetBrains Mono", monospace'; g.fillStyle = '#666'; g.fillText(P.how.length > 50 ? P.how.slice(0,49)+'…' : P.how, x0+52, y+13);
+    g.textAlign = 'center'; g.fillStyle = '#16130c'; g.font = '20px "JetBrains Mono", monospace'; R.v.forEach((v,k)=> g.fillText(scFmt(v), xs+cw*k+cw/2, y)); g.fillStyle = '#555'; g.fillText(scFmt(R.tol), xt+cw/2, y); g.fillText(scFmt(R.grade), xt+cw*1.5, y); });
+  g.textAlign = 'left'; g.save(); g.translate(1530, 250); scDrawDiagram(g, 420, 394, '#16130c', '#b9801a', '#fbfaf7'); g.restore();
+  g.fillStyle = '#555'; g.font = '16px "JetBrains Mono", monospace'; ['K  neck rib height', 'L  hem height', 'M  sleeve hem height'].forEach((t,i)=> g.fillText(t, 1560, 690+i*26));
+  drawWatermark(g, W, c.height); return c; }
+function openSizeChart(){ if (!SC.edited) SC.rows = null; scRender(); $('sizeModal').hidden = false; }
+$('sizeChartBtn').onclick = openSizeChart;
+$('scClose').onclick = ()=>{ $('sizeModal').hidden = true; };
+$('sizeModal').addEventListener('click', e=>{ if (e.target === $('sizeModal')) $('sizeModal').hidden = true; });
+addEventListener('keydown', e=>{ if (e.key==='Escape' && !$('sizeModal').hidden) $('sizeModal').hidden = true; });
+$('scSource').onchange = e=>{ SC.source = e.target.value; SC.base = null; scBuild(); try { localStorage.removeItem(scStoreKey); } catch(_){} scRender(); };
+$('scBase').onchange = e=>{ SC.base = e.target.value; scBuild(); scSave(); scRender(); };
+$('scCm').onclick = ()=>{ SC.unit = 'cm'; scRender(); }; $('scIn').onclick = ()=>{ SC.unit = 'in'; scRender(); };
+$('scReset').onclick = ()=>{ SC.base = null; SC.source = 'pattern'; try { localStorage.removeItem(scStoreKey); } catch(_){} scBuild(); scRender(); toast('Size chart reset to the pattern'); };
+$('scCsv').onclick = ()=> download(new Blob([scCsv()], {type:'text/csv;charset=utf-8'}), `size-chart-${GID}.csv`);
+$('scPng').onclick = async ()=> download(await canvasBlob(scPngCanvas()), `size-chart-${GID}.png`);
+$('scCopy').onclick = async ()=>{ scEnsure(); const tsv = [['Code','Point of measure', ...SIZES, 'Tol ±','Grade'], ...SC.rows.map((R,i)=>[R.c, POMS[i].n, ...R.v.map(scFmt), scFmt(R.tol), scFmt(R.grade)])].map(r=>r.join('\t')).join('\n');
+  try { await navigator.clipboard.writeText(tsv); toast('Copied — paste into Excel or Google Sheets'); } catch(_){ toast('Could not copy. Use Download CSV instead.'); } };
+
 AuthService.onChange(()=> { refreshPlanUI(); if (!AuthService.isApproved()) openLanding(); });
 refreshPlanUI();
 setGateMode('request');
-try { await AuthService.init(); } catch(_){}
-refreshPlanUI();
-if (AuthService.isApproved()) $('landing').hidden = true;
-else openLanding();
-await handleDecideLink();
-
-
+// The editor boots immediately; the server-side access check runs in parallel (it used to block the first frame).
+if (AuthService.getUser()?.status === 'approved') $('landing').classList.add('checking');
+(async ()=>{
+  try { await AuthService.init(); } catch(_){}
+  $('landing').classList.remove('checking');
+  refreshPlanUI();
+  if (AuthService.isApproved()) $('landing').hidden = true; else openLanding();
+  await handleDecideLink();
+})();
 
 // ---------- boot with a sample design ----------
-$('pcCount').textContent = `${mainPieces().length} pieces`; $('garmentName').textContent = USER ? `Raglan tee · ${mainPieces().length} pieces` : 'Oversized tee · 5 pieces';
+$('pcCount').textContent = `${SHOWN.length} pieces`; $('garmentName').textContent = `${G.name} · ${SHOWN.length} pieces`;
 new ResizeObserver(()=>{ resizeGL(); resizePattern(); }).observe($('stage'));
-const FONT_LIST = [...$('textFont').options].map(o=>o.value);
-for (const o of $('textFont').options) o.style.fontFamily = `"${o.value}", sans-serif`;
-await Promise.race([Promise.all(FONT_LIST.slice(0,8).map(f=>ensureFont(f))), new Promise(r=>setTimeout(r,2500))]);
-// lazy-load the rest in background
-FONT_LIST.slice(8).forEach(f=>ensureFont(f));
+for (const o of $('textFont').options) o.style.fontFamily = `"${o.value}", sans-serif`; // faces download only when used
 {
   const f = pieceById.front.box, b = pieceById.back.box, sl = pieceById.sleeveL.box;
   const fx = (f[0]+f[2])/2, bx = (b[0]+b[2])/2;
-  await ensureFont('Permanent Marker'); await ensureFont('Bebas Neue'); await ensureFont('Anton');
   addText('BUILT.\nNOT\nGENERATED.', fx, f[1]+27*PX, 25, {font:'Permanent Marker', color:'#efece3', rot:-4});
   addText('FB', (sl[0]+sl[2])/2+4*PX, sl[1]+14*PX, 4.5, {font:'Bebas Neue', color:'#efece3', rot:0});
-  addText('FASHION BUILDER\nL  ·  100% COTTON', bx, b[1]+6.5*PX, 9, {font:'Anton', color:'#1b1b1b', inside:true});
+  addText(`FASHION BUILDER\n${SC_DETECT()}  ·  100% COTTON`, bx, b[1]+6.5*PX, 9, {font:'Anton', color:'#1b1b1b', inside:true});
   S.sel = S.layers[0].id;
 }
-setFabric(S.fabric); setBg(S.bg); applyMaterial(); renderLayers(); resizeGL(); resizePattern(); commit(); loop();
+setFabric(S.fabric); setBg(S.bg); applyMaterial(); renderLayers(); resizeGL(); resizePattern(); commit(); mark('boot'); loop();
+// Web fonts arrive after the first frame: re-rasterise the text layers once their faces are in.
+Promise.all(['Permanent Marker','Bebas Neue','Anton'].map(ensureFont)).then(()=>{
+  for (const L of S.layers) if (L.kind==='text') textBitmap(L);
+  composeSheet(); renderLayers(); if (hist.length <= 1){ hist.length = 0; commit(); }
+});
 try {
   window.__FB = {
     grantLocalTestAccess: (email) => { AuthService.grantLocalTestAccess(email); refreshPlanUI(); closeLanding(); },
-    getS: () => S, getLayers: () => S.layers, pieceById, pieces: () => pieces, SHOWN: () => SHOWN,
-    TEX, PX, BRUSH, PV, pieceAt, fromDisplay, toView, toSheet, hitLayer, composeSheet, select, addText, ensureBrushLayer,
+    getS: () => S, getLayers: () => S.layers, pieceById, pieces: () => pieces, SHOWN: () => SHOWN, COVER, GID, sizeChart: () => SC, measurePattern, sheetCanvas: () => tex,
+    TEX, PX, BRUSH, PV, pieceAt, fromDisplay, toView, toSheet, hitLayer, composeSheet: () => { composeNow(); drawPatternNow(); }, select, addText, ensureBrushLayer,
     setBrushMode, moveLayerToPiece, stampBrush, commit, renderLayers, rebuildText, fitPattern,
     camBack: () => { const b = document.querySelector('[data-cam="back"]'); if (b) b.click(); },
     pieceClient(pieceId){
