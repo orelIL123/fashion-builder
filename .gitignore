@@ -3,3 +3,8 @@ src/index.artifact.html
 
 __pycache__/
 *.pyc
+
+# Local secrets — never commit
+beta-codes.txt
+fashion-builder-admin-key.txt
+*-admin-key.txt

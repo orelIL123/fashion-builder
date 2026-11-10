@@ -26,10 +26,11 @@ def main():
 
         page.goto(BASE + '/?t=' + str(int(time.time()*1000)), wait_until='networkidle', timeout=120000)
         html = page.content()
-        assert_('FB-OPEN-V1' in html, 'missing FB-OPEN-V1 marker')
+        assert_('FB-BETA-V1' in html, 'missing FB-BETA-V1 marker')
 
         page.wait_for_selector('#loading', state='hidden', timeout=120000)
         page.wait_for_function('() => window.__FB && window.AuthService', timeout=30000)
+        page.evaluate('() => window.__FB.grantLocalTestAccess()')
         page.wait_for_selector('#landing', state='hidden', timeout=10000)
         page.wait_for_timeout(400)
 

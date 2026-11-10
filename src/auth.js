@@ -1,21 +1,25 @@
-/* Fashion Builder — invite-only access (Supabase) + plan helpers.
- * ACCESS_GATE=false: the editor opens for everyone with Pro-equivalent features. Set true to require approval again.
- * Approval is stored server-side. The client caches only the email and re-checks status on load when the gate is on.
+/* Fashion Builder — beta access (email + one-time code) + invite leftovers + plan helpers.
+ * ACCESS_GATE=false: the old invite-approval flow stays off.
+ * BETA_GATE=true: testers enter with email + access code. Sessions are re-checked on every load.
  * Pricing UI is hidden for now (PAYMENTS_VISIBLE=false); plan limits stay so a paid plan can return later.
  */
 const AuthService = (() => {
   const SUPABASE_URL = 'https://ilekmrkcsopsxckxefns.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlsZWttcmtjc29wc3hja3hlZm5zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwMjQyMzMsImV4cCI6MjEwMTYwMDIzM30.jga5TlzxyEFzgV6bsaSdzW_mQOtFo_i7-7dSd4gzvdU';
   const FN_BASE = SUPABASE_URL + '/functions/v1';
-  const SESSION_KEY = 'fb-invite-session-v1';
+  const INVITE_SESSION_KEY = 'fb-invite-session-v1';
+  const SESSION_KEY = 'fb-beta-session-v1';
   const DESIGNS_KEY = 'fb-saas-designs-v1';
   const LEGACY_DESIGN_KEY = 'fashion-builder-design-v1';
 
-  /** Paid plan UI is hidden while access is invite-only. Planned later: ~₪30/mo. */
+  /** Paid plan UI is hidden while access is invite/beta only. Planned later: ~₪30/mo. */
   const PAYMENTS_VISIBLE = false;
 
   /** Set true to require email approval again. Invite/Supabase code below stays intact. */
   const ACCESS_GATE = false;
+
+  /** Beta testers enter with email + a one-time access code. */
+  const BETA_GATE = true;
 
   /** Kept for when pricing returns. */
   const ACCESS_CODES = {
@@ -38,7 +42,7 @@ const AuthService = (() => {
     },
     pro: {
       id: 'pro',
-      name: 'Invited',
+      name: 'Beta',
       priceILS: 30,
       maxLayers: Infinity,
       maxDesigns: 50,
@@ -50,8 +54,9 @@ const AuthService = (() => {
   };
 
   const listeners = new Set();
-  let session = loadSession(); // { email, name, status }
-  let verified = false; // true only after a successful server status check this page load
+  let session = loadSession(); // { email, token, status, reason? }
+  let verified = false; // true only after a successful server check this page load (or when no gate)
+  let lastReason = null; // 'revoked' | 'invalid' | null
 
   function loadSession() {
     try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch { return null; }
@@ -66,6 +71,19 @@ const AuthService = (() => {
 
   function validEmail(email) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  }
+
+  function requiresGate() {
+    return !!(BETA_GATE || ACCESS_GATE);
+  }
+
+  function isLocalHost() {
+    const host = (typeof location !== 'undefined') ? location.hostname : '';
+    return host === 'localhost' || host === '127.0.0.1';
+  }
+
+  function isLocalTestSession() {
+    return isLocalHost() && session?.token === 'local-test';
   }
 
   async function callFn(name, body, { method = 'POST' } = {}) {
@@ -102,12 +120,13 @@ const AuthService = (() => {
   }
 
   function isApproved() {
-    if (!ACCESS_GATE) return true;
+    if (!requiresGate()) return true;
+    if (BETA_GATE) return verified && session?.status === 'ok' && !!session?.token;
     return verified && session?.status === 'approved';
   }
 
   function getPlan() {
-    if (!ACCESS_GATE) return PLANS.pro;
+    if (!requiresGate()) return PLANS.pro;
     return PLANS[isApproved() ? 'pro' : 'free'];
   }
 
@@ -119,6 +138,7 @@ const AuthService = (() => {
       paymentsVisible: PAYMENTS_VISIBLE,
       approved: isApproved(),
       codesHint: Object.keys(ACCESS_CODES),
+      reason: lastReason,
     };
   }
 
@@ -129,7 +149,8 @@ const AuthService = (() => {
     const data = await callFn('request-access', { email, name });
     if (!data.ok) throw new Error(data.error || 'Could not send the request');
     verified = true;
-    saveSession({ email, name, status: data.status || 'pending' });
+    // Invite leftovers — only used if ACCESS_GATE is turned back on.
+    try { localStorage.setItem(INVITE_SESSION_KEY, JSON.stringify({ email, name, status: data.status || 'pending' })); } catch (_) {}
     notify();
     return { ...getState(), email_sent: data.email_sent, email_detail: data.email_detail, already: data.already };
   }
@@ -147,7 +168,7 @@ const AuthService = (() => {
     const st = await checkStatus(email);
     if (st.status === 'unknown') throw new Error('No request found for that email / לא נמצאה בקשה לאימייל הזה');
     verified = true;
-    saveSession({ email, name: st.name || '', status: st.status });
+    try { localStorage.setItem(INVITE_SESSION_KEY, JSON.stringify({ email, name: st.name || '', status: st.status })); } catch (_) {}
     notify();
     if (st.status === 'pending') {
       const err = new Error('pending');
@@ -162,19 +183,70 @@ const AuthService = (() => {
     return getState();
   }
 
+  async function redeemCode({ email, code } = {}) {
+    email = String(email || '').trim().toLowerCase();
+    code = String(code || '').trim();
+    if (!validEmail(email)) throw new Error('Enter a valid email / הזן אימייל תקין');
+    if (!code) throw new Error('Enter an access code / הזן קוד גישה');
+    const data = await callFn('redeem-code', { email, code });
+    if (!data.ok) {
+      const err = new Error(data.error || 'Could not redeem this code');
+      err.code = data.code || 'invalid';
+      throw err;
+    }
+    lastReason = null;
+    verified = true;
+    saveSession({ email, token: data.token, status: 'ok' });
+    notify();
+    return getState();
+  }
+
+  async function validateSession({ email, token } = {}) {
+    email = String(email || session?.email || '').trim().toLowerCase();
+    token = String(token || session?.token || '');
+    const data = await callFn('validate-session', { email, token });
+    if (!data.ok && data.valid === undefined) throw new Error(data.error || 'Could not validate session');
+    return { valid: !!data.valid, reason: data.reason || (data.valid ? null : 'invalid'), email: data.email || email };
+  }
+
   function logout() {
+    lastReason = null;
+    verified = true;
     saveSession(null);
     notify();
     return getState();
   }
 
   async function refreshSession() {
-    if (!ACCESS_GATE) {
+    if (!requiresGate()) {
       /* Ignore stale invite sessions so a leftover pending/rejected key cannot show the gate. */
       verified = true;
       return getState();
     }
     verified = false;
+    lastReason = null;
+    if (isLocalTestSession()) {
+      verified = true;
+      return getState();
+    }
+    if (BETA_GATE) {
+      if (!session?.email || !session?.token) { verified = true; return getState(); }
+      try {
+        const st = await validateSession({ email: session.email, token: session.token });
+        if (!st.valid) {
+          lastReason = st.reason || 'invalid';
+          saveSession(null);
+        } else {
+          saveSession({ email: session.email, token: session.token, status: 'ok' });
+        }
+        verified = true;
+        notify();
+      } catch (_) {
+        /* Keep the cached session off the editor until a fresh check succeeds. */
+      }
+      return getState();
+    }
+    // ACCESS_GATE path (currently off)
     if (!session?.email) { verified = true; return getState(); }
     try {
       const st = await checkStatus(session.email);
@@ -195,10 +267,10 @@ const AuthService = (() => {
 
   /** Demo leftovers — kept so a paid plan can return without rewriting callers. */
   async function signup({ email, password, name, inviteCode }) {
+    if (BETA_GATE) return redeemCode({ email, code: inviteCode });
     return requestAccess({ email, name });
   }
-  async function redeemCode() { throw new Error('Access is invite-only for now'); }
-  function setPlanDemo() { throw new Error('Access is invite-only for now'); }
+  function setPlanDemo() { throw new Error('Access is beta-only for now'); }
 
   function canUseFont(font) {
     const p = getPlan();
@@ -245,19 +317,19 @@ const AuthService = (() => {
 
   /** Localhost-only helper for feature tests. Never grants access on the live site. */
   function grantLocalTestAccess(email = 'local-test@example.com') {
-    const host = (typeof location !== 'undefined') ? location.hostname : '';
-    if (host !== 'localhost' && host !== '127.0.0.1') throw new Error('Test access is local only');
+    if (!isLocalHost()) throw new Error('Test access is local only');
+    lastReason = null;
     verified = true;
-    saveSession({ email, name: 'Local test', status: 'approved' });
+    saveSession({ email, token: 'local-test', status: 'ok' });
     notify();
     return getState();
   }
 
   return {
-    PLANS, ACCESS_CODES, PAYMENTS_VISIBLE, ACCESS_GATE, SUPABASE_URL,
-    getState, getUser, getPlan, isApproved,
+    PLANS, ACCESS_CODES, PAYMENTS_VISIBLE, ACCESS_GATE, BETA_GATE, SUPABASE_URL,
+    requiresGate, getState, getUser, getPlan, isApproved,
     requestAccess, checkStatus, login, logout, refreshSession, init,
-    signup, redeemCode, setPlanDemo,
+    signup, redeemCode, validateSession, setPlanDemo,
     canUseFont, canAddLayer, canExportVideo, needsWatermark,
     listDesigns, saveNamedDesign, loadNamedDesign, deleteNamedDesign,
     onChange, grantLocalTestAccess,

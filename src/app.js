@@ -70,10 +70,10 @@ function refreshPlanUI(){
   const st = AuthService.getState();
   const badge = $('planBadge');
   const approved = AuthService.isApproved();
-  const gated = !!AuthService.ACCESS_GATE;
+  const gated = !!AuthService.requiresGate();
   if (badge){
     badge.hidden = !gated || !approved;
-    badge.textContent = approved ? 'Invited' : (st.plan.name || '');
+    badge.textContent = approved ? (AuthService.BETA_GATE ? 'Beta' : 'Invited') : (st.plan.name || '');
     badge.classList.toggle('pro', approved);
   }
   if ($('upgradeBtn')) $('upgradeBtn').hidden = !AuthService.PAYMENTS_VISIBLE;
@@ -85,7 +85,7 @@ function refreshPlanUI(){
   if ($('accEmailHint')) $('accEmailHint').textContent = st.user ? st.user.email : '';
   if ($('accSignIn')){
     const b = $('accSignIn').querySelector('b');
-    if (b) b.textContent = approved ? 'Account' : 'Request access';
+    if (b) b.textContent = approved ? 'Account' : (AuthService.BETA_GATE ? 'Enter beta' : 'Request access');
   }
   const sel = $('textFont');
   if (sel){
@@ -1358,11 +1358,11 @@ $('snap').onclick = async ()=>{ const r = await capture3dPng({mode:'catalogue'})
 let gateMode = 'request';
 
 function openLanding(){
-  if (!AuthService.ACCESS_GATE){ $('landing').hidden = true; return; }
+  if (!AuthService.requiresGate()){ $('landing').hidden = true; return; }
   $('landing').hidden = false; syncGateView();
 }
 function closeLanding(){
-  if (AuthService.ACCESS_GATE && !AuthService.isApproved()){ openLanding(); return; }
+  if (AuthService.requiresGate() && !AuthService.isApproved()){ openLanding(); return; }
   $('landing').hidden = true;
 }
 function openAuth(){ openLanding(); setGateMode('login'); }
@@ -1384,21 +1384,25 @@ function setGateMode(mode){
 }
 
 function showGatePanel(which){
-  const form = $('gateForm'), pend = $('gatePending'), rej = $('gateRejected'), tabs = $('gateTabs');
+  const form = $('gateForm'), pend = $('gatePending'), rej = $('gateRejected'), tabs = $('gateTabs'), rev = $('gateRevoked');
   if (form) form.hidden = which !== 'form';
-  if (tabs) tabs.hidden = which !== 'form';
+  if (tabs) tabs.hidden = AuthService.BETA_GATE || which !== 'form';
   if (pend) pend.hidden = which !== 'pending';
   if (rej) rej.hidden = which !== 'rejected';
+  if (rev) rev.hidden = which !== 'revoked';
 }
 
 function syncGateView(){
   const u = AuthService.getUser();
-  if (!AuthService.ACCESS_GATE || AuthService.isApproved()){ $('landing').hidden = true; return; }
+  if (!AuthService.requiresGate() || AuthService.isApproved()){ $('landing').hidden = true; return; }
   $('landing').hidden = false;
-  if (u?.status === 'pending'){
+  const reason = AuthService.getState().reason;
+  if (reason === 'revoked'){
+    showGatePanel('revoked');
+  } else if (!AuthService.BETA_GATE && u?.status === 'pending'){
     if ($('gatePendingEmail')) $('gatePendingEmail').textContent = u.email;
     showGatePanel('pending');
-  } else if (u?.status === 'rejected'){
+  } else if (!AuthService.BETA_GATE && u?.status === 'rejected'){
     showGatePanel('rejected');
   } else {
     showGatePanel('form');
@@ -1436,10 +1440,14 @@ $('gateForm') && ($('gateForm').onsubmit = async ev=>{
   if ($('gateError')) $('gateError').textContent = '';
   const email = $('gateEmail').value;
   const name = $('gateName') ? $('gateName').value : '';
+  const code = $('gateCode') ? $('gateCode').value : '';
   const btn = $('gateSubmit');
   if (btn) btn.disabled = true;
   try {
-    if (gateMode === 'login'){
+    if (AuthService.BETA_GATE){
+      await AuthService.redeemCode({ email, code });
+      await enterIfApproved();
+    } else if (gateMode === 'login'){
       try {
         await AuthService.login({ email });
         await enterIfApproved();
@@ -1480,6 +1488,17 @@ $('gateTryAgain') && ($('gateTryAgain').onclick = ()=>{
   setGateMode('request');
   if ($('gateEmail') && email) $('gateEmail').value = email;
 });
+$('gateNewCode') && ($('gateNewCode').onclick = ()=>{
+  AuthService.logout();
+  showGatePanel('form');
+  if ($('gateError')) $('gateError').textContent = '';
+  if ($('gateCode')) $('gateCode').value = '';
+});
+if ($('gateCode')){
+  $('gateCode').addEventListener('input', ev=>{
+    ev.target.value = ev.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '');
+  });
+}
 
 // Legacy auth modal (kept in DOM, unused in invite mode)
 if ($('authTabIn')) $('authTabIn').onclick = ()=> setGateMode('login');
@@ -1747,17 +1766,18 @@ $('scPng').onclick = async ()=> download(await canvasBlob(scPngCanvas()), `size-
 $('scCopy').onclick = async ()=>{ scEnsure(); const tsv = [['Code','Point of measure', ...SIZES, 'Tol ±','Grade'], ...SC.rows.map((R,i)=>[R.c, POMS[i].n, ...R.v.map(scFmt), scFmt(R.tol), scFmt(R.grade)])].map(r=>r.join('\t')).join('\n');
   try { await navigator.clipboard.writeText(tsv); toast('Copied — paste into Excel or Google Sheets'); } catch(_){ toast('Could not copy. Use Download CSV instead.'); } };
 
-AuthService.onChange(()=> { refreshPlanUI(); if (AuthService.ACCESS_GATE && !AuthService.isApproved()) openLanding(); });
+AuthService.onChange(()=> { refreshPlanUI(); if (AuthService.requiresGate() && !AuthService.isApproved()) openLanding(); });
 refreshPlanUI();
 setGateMode('request');
 // The editor boots immediately; the server-side access check runs in parallel (it used to block the first frame).
-if (AuthService.ACCESS_GATE && AuthService.getUser()?.status === 'approved') $('landing').classList.add('checking');
-if (!AuthService.ACCESS_GATE) $('landing').hidden = true;
+if (AuthService.requiresGate() && AuthService.getUser()) $('landing').classList.add('checking');
+if (!AuthService.requiresGate()) $('landing').hidden = true;
+else $('landing').hidden = false;
 (async ()=>{
   try { await AuthService.init(); } catch(_){}
   $('landing').classList.remove('checking');
   refreshPlanUI();
-  if (!AuthService.ACCESS_GATE || AuthService.isApproved()) $('landing').hidden = true; else openLanding();
+  if (!AuthService.requiresGate() || AuthService.isApproved()) $('landing').hidden = true; else openLanding();
   await handleDecideLink();
 })();
 

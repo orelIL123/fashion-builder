@@ -4,7 +4,7 @@ A garment editor in the browser: a sewing-pattern sheet and a live 3D shirt side
 
 **Live:** https://orelil123.github.io/fashion-builder/
 
-Marker: `FB-OPEN-V1` (in page source).
+Marker: `FB-BETA-V1` (in page source).
 
 ## Features
 
@@ -17,30 +17,28 @@ Marker: `FB-OPEN-V1` (in page source).
 - **Garments:** a garment picker on the 3D pane (`?g=<id>`), driven by a small registry in `src/app.js`
 - **Design:** image and text layers on the **2D pattern map** (and 3D), click-to-place, opacity, flip, rotate handle, lock/duplicate/reorder, 35 fonts (incl. Hebrew), inside prints (neck label), solid or gradient fabric colour, rib colour, washes, save/load in browser
 - **Export:** 3D PNG (catalogue / dark / transparent), 2D pattern PNG + SVG, print files (ZIP), sublimation panels, spec sheet, **360° turntable video (~5s WebM/MP4)** (Pro)
-- **Access:** Currently open to everyone, with full editor features (all fonts, no watermark, video, up to 50 saved designs). A small header note says **Currently free — pricing may change at any time / כרגע חינם — ייתכנו שינויים בכל עת**. Invite-only code is kept behind `ACCESS_GATE` in `src/auth.js` (set to `true` to require approval again).
+- **Access:** Beta gate — testers enter with an **email + one-time access code**. Approved testers get full editor features (all fonts, no watermark, video, up to 50 saved designs). A header note says **Currently free — pricing may change at any time / כרגע חינם — ייתכנו שינויים בכל עת**. The old invite-approval flow stays behind `ACCESS_GATE` (still `false`).
 
 Turntable video is recorded in-browser (2D mirror of the WebGL canvas + `captureStream(0)` / `requestFrame`). Some browsers omit duration metadata on the WebM; the file still plays.
 
-## Invite-only access
-**Currently off.** `ACCESS_GATE` in `src/auth.js` is `false`, so the editor opens immediately with Pro-equivalent features and ignores any stale invite session in `localStorage`. Set it to `true` and rebuild to require approval again.
+## Beta access
+The landing screen is labelled **גרסת בטא / Beta version**. A tester enters their email and a one-time access code (`FB-XXXX-XXXX`).
 
-When the gate is on, the editor is blocked until a request is **approved server-side** (not just in `localStorage`).
+1. Edge Function `redeem-code` binds an unused code to that email and marks it `used`. The same email + code can sign back in later (a new session token is issued). Any other email is rejected.
+2. The browser stores only the email and a session token. On every load, `validate-session` re-checks the code server-side. If the owner has **revoked** the code, the tester is blocked.
+3. The owner manages codes at [`admin.html`](https://orelil123.github.io/fashion-builder/admin.html) (protected by an admin key, not in this repo). Actions: list, revoke, restore, generate a new code.
 
-1. A visitor enters their email (name optional) on **Request access / בקשת גישה**.
-2. Edge Function `request-access` inserts a `pending` row and notifies `orel895@gmail.com` via [FormSubmit.co](https://formsubmit.co) with **Approve** and **Reject** links.
-3. Those links open Edge Function `decide` and update the row. The visitor returns, enters the same email, and `check-status` lets them in if approved.
+Codes are stored as SHA-256 hashes in `public.fb_beta_codes` (RLS on, no anon access). Plaintext codes are never kept in the database.
 
-**Supabase:** project `orelIL123's Project` (ref `ilekmrkcsopsxckxefns`, org TooLive). Fashion Builder tables/functions are isolated (`public.fb_access_requests` + `request-access` / `decide` / `check-status`). This project already hosted another app; a brand-new Supabase project was quoted at $10/month, so this one was reused.
+**Supabase:** project `orelIL123's Project` (ref `ilekmrkcsopsxckxefns`, org TooLive). Fashion Builder tables/functions are isolated (`public.fb_beta_*`, `public.fb_access_requests` + `redeem-code` / `validate-session` / `admin-codes`, and the older invite functions). This project already hosted another app; a brand-new Supabase project was quoted at $10/month, so this one was reused.
 
-**What Orel must do once:** the first FormSubmit notification is an activation email. Open it in `orel895@gmail.com` and click the confirmation link. After that, new requests arrive with Approve / Reject links. FormSubmit also keeps submissions for 30 days if you confirm later.
+The previous invite-approval flow (`ACCESS_GATE`, `request-access` / `decide` / `check-status`) is still in the repo but **off**.
 
 **Limitations**
-- Login after approval is email-only (no password / magic link). Anyone who knows an approved email can enter. Fine for a small designer group; swap in Supabase Auth later if needed.
-- Requesters are not emailed when you decide — they come back and enter their email to see the status.
-- FormSubmit must be activated once, as above.
-- The gate is enforced by the server for approval state, but this is still a static GitHub Pages app: a determined user can hide the overlay with DevTools. They cannot change the server-side status.
+- This is still a static GitHub Pages app: a determined user can hide the overlay with DevTools. They cannot mint a valid session or un-revoke a code without the server.
 - Saved designs still live in the browser, not in the cloud.
 - Paid plans are hidden (code kept). Planned later: ~₪30/month.
+- Testers are not emailed a confirmation; they keep the code they were given.
 
 Rebuild after edits: `python3 src/build.py` (bundles `auth.js` + `app.js` into `index.html`).
 
@@ -76,7 +74,8 @@ Rebuild after edits: `python3 src/build.py` (bundles `auth.js` + `app.js` into `
 | `assets/vendor/` | three.js r170 bundle (MIT) and JSZip (MIT / GPLv3) |
 | `src/vendor/` | entry file + script that rebuild the three.js bundle |
 | `tests/` | Playwright checks (`speed_coverage_sizechart_test.py` covers speed, dead zones and the size chart) |
-| `src/auth.js` | AuthService (plans + optional invite gate via `ACCESS_GATE`) |
+| `src/auth.js` | AuthService (plans + beta gate; invite leftovers behind `ACCESS_GATE`)
+| `admin.html` | Owner admin for beta codes | |
 | `src/app.js`, `src/index.src.html`, `src/build.py` | edit here, then `python3 src/build.py` |
 | `blender/` | Blender pipeline |
 
@@ -88,4 +87,4 @@ python3 -m http.server 8765   # then open http://localhost:8765
 
 
 ### Build marker
-`FB-OPEN-V1` — editor is open to everyone; invite gate is off (`ACCESS_GATE=false`).
+`FB-BETA-V1` — beta gate on (email + one-time code); invite `ACCESS_GATE` is still off.

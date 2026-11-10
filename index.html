@@ -8,7 +8,7 @@
 <script>/* start the garment download before the app module is even parsed */(function(){var g=new URLSearchParams(location.search).get('g');var l=document.createElement('link');l.rel='preload';l.as='fetch';l.crossOrigin='anonymous';l.href=g==='oversized'?'assets/fb/shirt.glb':'assets/shirt.glb';document.head.appendChild(l);})();</script>
 <link rel="stylesheet" id="fontCss" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Alfa+Slab+One&family=Anton&family=Archivo+Black&family=Assistant:wght@400;700&family=Bangers&family=Barlow+Condensed:wght@700&family=Bebas+Neue&family=Black+Ops+One&family=Caveat:wght@600&family=Courier+Prime&family=DM+Serif+Display&family=Familjen+Grotesk:wght@400;500;600;700&family=Frank+Ruhl+Libre:wght@400;700&family=Heebo:wght@400;700&family=Indie+Flower&family=JetBrains+Mono:wght@400;500&family=Karantina:wght@400;700&family=Lobster&family=Lora:wght@600&family=Merriweather:wght@700&family=Montserrat:wght@600;800&family=Oswald:wght@500;700&family=Pacifico&family=Permanent+Marker&family=Playfair+Display:wght@700&family=Poppins:wght@600;800&family=Press+Start+2P&family=Righteous&family=Roboto:wght@400;700&family=Rubik:wght@400;700&family=Secular+One&family=Space+Mono&family=Suez+One&family=Teko:wght@600&family=Varela+Round&display=swap">
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Alfa+Slab+One&family=Anton&family=Archivo+Black&family=Assistant:wght@400;700&family=Bangers&family=Barlow+Condensed:wght@700&family=Bebas+Neue&family=Black+Ops+One&family=Caveat:wght@600&family=Courier+Prime&family=DM+Serif+Display&family=Familjen+Grotesk:wght@400;500;600;700&family=Frank+Ruhl+Libre:wght@400;700&family=Heebo:wght@400;700&family=Indie+Flower&family=JetBrains+Mono:wght@400;500&family=Karantina:wght@400;700&family=Lobster&family=Lora:wght@600&family=Merriweather:wght@700&family=Montserrat:wght@600;800&family=Oswald:wght@500;700&family=Pacifico&family=Permanent+Marker&family=Playfair+Display:wght@700&family=Poppins:wght@600;800&family=Press+Start+2P&family=Righteous&family=Roboto:wght@400;700&family=Rubik:wght@400;700&family=Secular+One&family=Space+Mono&family=Suez+One&family=Teko:wght@600&family=Varela+Round&display=swap"></noscript>
-<!-- FB-OPEN-V1 -->
+<!-- FB-BETA-V1 -->
 <style>
 /* Layout: tailor's cutting table — tool rail top, two work surfaces (pattern sheet | 3D fitting), spec panel right. Single dark workshop look by choice. */
 :root{
@@ -241,6 +241,8 @@ label.field{grid-template-columns:96px 1fr 48px}
 .gate-status h2{margin:0;font-size:22px;letter-spacing:-.02em;text-transform:none;color:var(--text)}
 .landing-gate .landing-hero{padding-top:8px}
 .upgrade-btn[hidden],.pricing-legacy[hidden]{display:none!important}
+.beta-pill{display:inline-block;margin:0 auto;padding:4px 12px;border:1px solid var(--accent);color:var(--accent);border-radius:999px;font-family:var(--f-mono);font-size:12px;letter-spacing:.04em;font-weight:600}
+#gateCode{font-family:var(--f-mono);letter-spacing:.08em;text-transform:uppercase}
 </style>
 
 </head><body>
@@ -277,7 +279,7 @@ label.field{grid-template-columns:96px 1fr 48px}
     </div>
   </div>
   <button class="btn upgrade-btn" id="upgradeBtn" title="Upgrade" hidden>Upgrade</button>
-  <span class="plan-badge" id="planBadge" hidden>Invited</span>
+  <span class="plan-badge" id="planBadge" hidden>Beta</span>
   <div class="menuwrap user-menu">
     <button class="btn" id="accountBtn" aria-haspopup="true" aria-expanded="false">Account</button>
     <div class="menu" id="accountMenu" hidden role="menu">
@@ -495,27 +497,39 @@ label.field{grid-template-columns:96px 1fr 48px}
         <svg width="28" height="28" viewBox="0 0 26 26" aria-hidden="true"><path d="M8 3 3 6.5l2.6 4.2L8 9.6V23h10V9.6l2.4 1.1L23 6.5 18 3c-.9 1.9-2.8 3-5 3s-4.1-1.1-5-3Z" fill="none" stroke="#f2c14e" stroke-width="1.6" stroke-linejoin="round"/></svg>
         Fashion Builder
       </div>
-      <h1>Request access <span style="color:var(--muted);font-weight:500">/</span> בקשת גישה</h1>
+      <div class="beta-pill">גרסת בטא · Beta version</div>
+      <h1>גרסת בטא <span style="color:var(--muted);font-weight:500">/</span> Beta version</h1>
       <p>Design garments in 2D &amp; 3D — place text, photos and brush paint on the sewing pattern, and they land on the live shirt.</p>
       <p class="free-note">Currently free — pricing may change at any time</p>
       <p class="free-note he" dir="rtl">כרגע חינם — ייתכנו שינויים בכל עת</p>
     </div>
     <p class="gate-checking">Signing you in… <span dir="rtl">מתחבר…</span></p>
     <div class="gate-card" id="gateCard">
-      <div class="auth-tabs" id="gateTabs">
+      <div class="auth-tabs" id="gateTabs" hidden>
         <button class="btn" type="button" id="gateTabRequest" aria-pressed="true">Request access · בקשת גישה</button>
         <button class="btn" type="button" id="gateTabLogin" aria-pressed="false">I already requested · כבר ביקשתי</button>
       </div>
       <form id="gateForm">
-        <label id="gateNameRow">Name (optional) / שם (אופציונלי)
+        <label id="gateNameRow" hidden>Name (optional) / שם (אופציונלי)
           <input id="gateName" type="text" autocomplete="name" placeholder="Your name / השם שלך">
         </label>
         <label>Email / אימייל
           <input id="gateEmail" type="email" required autocomplete="email" placeholder="you@email.com">
         </label>
+        <label id="gateCodeRow">Access code / קוד גישה
+          <input id="gateCode" type="text" required autocomplete="off" spellcheck="false" autocapitalize="characters" placeholder="FB-XXXX-XXXX">
+        </label>
         <p class="auth-error" id="gateError"></p>
-        <button class="btn primary" id="gateSubmit" type="submit">Send request · שליחת בקשה</button>
+        <button class="btn primary" id="gateSubmit" type="submit">Enter · כניסה</button>
       </form>
+      <div id="gateRevoked" hidden class="gate-status">
+        <h2>Your access was blocked</h2>
+        <p dir="rtl">הגישה שלך נחסמה</p>
+        <p class="sub" style="margin:0">This beta code is no longer valid. Ask for a new code if you still need access.</p>
+        <div class="row" style="justify-content:center">
+          <button class="btn" type="button" id="gateNewCode">Try another code · קוד אחר</button>
+        </div>
+      </div>
       <div id="gatePending" hidden class="gate-status">
         <h2>Your request is pending approval</h2>
         <p dir="rtl">הבקשה שלך ממתינה לאישור</p>
@@ -664,24 +678,28 @@ label.field{grid-template-columns:96px 1fr 48px}
 {"imports":{"three":"./assets/vendor/three.fb.min.js"}}
 </script>
 <script type="module">
-/* Fashion Builder — invite-only access (Supabase) + plan helpers.
- * ACCESS_GATE=false: the editor opens for everyone with Pro-equivalent features. Set true to require approval again.
- * Approval is stored server-side. The client caches only the email and re-checks status on load when the gate is on.
+/* Fashion Builder — beta access (email + one-time code) + invite leftovers + plan helpers.
+ * ACCESS_GATE=false: the old invite-approval flow stays off.
+ * BETA_GATE=true: testers enter with email + access code. Sessions are re-checked on every load.
  * Pricing UI is hidden for now (PAYMENTS_VISIBLE=false); plan limits stay so a paid plan can return later.
  */
 const AuthService = (() => {
   const SUPABASE_URL = 'https://ilekmrkcsopsxckxefns.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlsZWttcmtjc29wc3hja3hlZm5zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwMjQyMzMsImV4cCI6MjEwMTYwMDIzM30.jga5TlzxyEFzgV6bsaSdzW_mQOtFo_i7-7dSd4gzvdU';
   const FN_BASE = SUPABASE_URL + '/functions/v1';
-  const SESSION_KEY = 'fb-invite-session-v1';
+  const INVITE_SESSION_KEY = 'fb-invite-session-v1';
+  const SESSION_KEY = 'fb-beta-session-v1';
   const DESIGNS_KEY = 'fb-saas-designs-v1';
   const LEGACY_DESIGN_KEY = 'fashion-builder-design-v1';
 
-  /** Paid plan UI is hidden while access is invite-only. Planned later: ~₪30/mo. */
+  /** Paid plan UI is hidden while access is invite/beta only. Planned later: ~₪30/mo. */
   const PAYMENTS_VISIBLE = false;
 
   /** Set true to require email approval again. Invite/Supabase code below stays intact. */
   const ACCESS_GATE = false;
+
+  /** Beta testers enter with email + a one-time access code. */
+  const BETA_GATE = true;
 
   /** Kept for when pricing returns. */
   const ACCESS_CODES = {
@@ -704,7 +722,7 @@ const AuthService = (() => {
     },
     pro: {
       id: 'pro',
-      name: 'Invited',
+      name: 'Beta',
       priceILS: 30,
       maxLayers: Infinity,
       maxDesigns: 50,
@@ -716,8 +734,9 @@ const AuthService = (() => {
   };
 
   const listeners = new Set();
-  let session = loadSession(); // { email, name, status }
-  let verified = false; // true only after a successful server status check this page load
+  let session = loadSession(); // { email, token, status, reason? }
+  let verified = false; // true only after a successful server check this page load (or when no gate)
+  let lastReason = null; // 'revoked' | 'invalid' | null
 
   function loadSession() {
     try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch { return null; }
@@ -732,6 +751,19 @@ const AuthService = (() => {
 
   function validEmail(email) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  }
+
+  function requiresGate() {
+    return !!(BETA_GATE || ACCESS_GATE);
+  }
+
+  function isLocalHost() {
+    const host = (typeof location !== 'undefined') ? location.hostname : '';
+    return host === 'localhost' || host === '127.0.0.1';
+  }
+
+  function isLocalTestSession() {
+    return isLocalHost() && session?.token === 'local-test';
   }
 
   async function callFn(name, body, { method = 'POST' } = {}) {
@@ -768,12 +800,13 @@ const AuthService = (() => {
   }
 
   function isApproved() {
-    if (!ACCESS_GATE) return true;
+    if (!requiresGate()) return true;
+    if (BETA_GATE) return verified && session?.status === 'ok' && !!session?.token;
     return verified && session?.status === 'approved';
   }
 
   function getPlan() {
-    if (!ACCESS_GATE) return PLANS.pro;
+    if (!requiresGate()) return PLANS.pro;
     return PLANS[isApproved() ? 'pro' : 'free'];
   }
 
@@ -785,6 +818,7 @@ const AuthService = (() => {
       paymentsVisible: PAYMENTS_VISIBLE,
       approved: isApproved(),
       codesHint: Object.keys(ACCESS_CODES),
+      reason: lastReason,
     };
   }
 
@@ -795,7 +829,8 @@ const AuthService = (() => {
     const data = await callFn('request-access', { email, name });
     if (!data.ok) throw new Error(data.error || 'Could not send the request');
     verified = true;
-    saveSession({ email, name, status: data.status || 'pending' });
+    // Invite leftovers — only used if ACCESS_GATE is turned back on.
+    try { localStorage.setItem(INVITE_SESSION_KEY, JSON.stringify({ email, name, status: data.status || 'pending' })); } catch (_) {}
     notify();
     return { ...getState(), email_sent: data.email_sent, email_detail: data.email_detail, already: data.already };
   }
@@ -813,7 +848,7 @@ const AuthService = (() => {
     const st = await checkStatus(email);
     if (st.status === 'unknown') throw new Error('No request found for that email / לא נמצאה בקשה לאימייל הזה');
     verified = true;
-    saveSession({ email, name: st.name || '', status: st.status });
+    try { localStorage.setItem(INVITE_SESSION_KEY, JSON.stringify({ email, name: st.name || '', status: st.status })); } catch (_) {}
     notify();
     if (st.status === 'pending') {
       const err = new Error('pending');
@@ -828,19 +863,70 @@ const AuthService = (() => {
     return getState();
   }
 
+  async function redeemCode({ email, code } = {}) {
+    email = String(email || '').trim().toLowerCase();
+    code = String(code || '').trim();
+    if (!validEmail(email)) throw new Error('Enter a valid email / הזן אימייל תקין');
+    if (!code) throw new Error('Enter an access code / הזן קוד גישה');
+    const data = await callFn('redeem-code', { email, code });
+    if (!data.ok) {
+      const err = new Error(data.error || 'Could not redeem this code');
+      err.code = data.code || 'invalid';
+      throw err;
+    }
+    lastReason = null;
+    verified = true;
+    saveSession({ email, token: data.token, status: 'ok' });
+    notify();
+    return getState();
+  }
+
+  async function validateSession({ email, token } = {}) {
+    email = String(email || session?.email || '').trim().toLowerCase();
+    token = String(token || session?.token || '');
+    const data = await callFn('validate-session', { email, token });
+    if (!data.ok && data.valid === undefined) throw new Error(data.error || 'Could not validate session');
+    return { valid: !!data.valid, reason: data.reason || (data.valid ? null : 'invalid'), email: data.email || email };
+  }
+
   function logout() {
+    lastReason = null;
+    verified = true;
     saveSession(null);
     notify();
     return getState();
   }
 
   async function refreshSession() {
-    if (!ACCESS_GATE) {
+    if (!requiresGate()) {
       /* Ignore stale invite sessions so a leftover pending/rejected key cannot show the gate. */
       verified = true;
       return getState();
     }
     verified = false;
+    lastReason = null;
+    if (isLocalTestSession()) {
+      verified = true;
+      return getState();
+    }
+    if (BETA_GATE) {
+      if (!session?.email || !session?.token) { verified = true; return getState(); }
+      try {
+        const st = await validateSession({ email: session.email, token: session.token });
+        if (!st.valid) {
+          lastReason = st.reason || 'invalid';
+          saveSession(null);
+        } else {
+          saveSession({ email: session.email, token: session.token, status: 'ok' });
+        }
+        verified = true;
+        notify();
+      } catch (_) {
+        /* Keep the cached session off the editor until a fresh check succeeds. */
+      }
+      return getState();
+    }
+    // ACCESS_GATE path (currently off)
     if (!session?.email) { verified = true; return getState(); }
     try {
       const st = await checkStatus(session.email);
@@ -861,10 +947,10 @@ const AuthService = (() => {
 
   /** Demo leftovers — kept so a paid plan can return without rewriting callers. */
   async function signup({ email, password, name, inviteCode }) {
+    if (BETA_GATE) return redeemCode({ email, code: inviteCode });
     return requestAccess({ email, name });
   }
-  async function redeemCode() { throw new Error('Access is invite-only for now'); }
-  function setPlanDemo() { throw new Error('Access is invite-only for now'); }
+  function setPlanDemo() { throw new Error('Access is beta-only for now'); }
 
   function canUseFont(font) {
     const p = getPlan();
@@ -911,19 +997,19 @@ const AuthService = (() => {
 
   /** Localhost-only helper for feature tests. Never grants access on the live site. */
   function grantLocalTestAccess(email = 'local-test@example.com') {
-    const host = (typeof location !== 'undefined') ? location.hostname : '';
-    if (host !== 'localhost' && host !== '127.0.0.1') throw new Error('Test access is local only');
+    if (!isLocalHost()) throw new Error('Test access is local only');
+    lastReason = null;
     verified = true;
-    saveSession({ email, name: 'Local test', status: 'approved' });
+    saveSession({ email, token: 'local-test', status: 'ok' });
     notify();
     return getState();
   }
 
   return {
-    PLANS, ACCESS_CODES, PAYMENTS_VISIBLE, ACCESS_GATE, SUPABASE_URL,
-    getState, getUser, getPlan, isApproved,
+    PLANS, ACCESS_CODES, PAYMENTS_VISIBLE, ACCESS_GATE, BETA_GATE, SUPABASE_URL,
+    requiresGate, getState, getUser, getPlan, isApproved,
     requestAccess, checkStatus, login, logout, refreshSession, init,
-    signup, redeemCode, setPlanDemo,
+    signup, redeemCode, validateSession, setPlanDemo,
     canUseFont, canAddLayer, canExportVideo, needsWatermark,
     listDesigns, saveNamedDesign, loadNamedDesign, deleteNamedDesign,
     onChange, grantLocalTestAccess,
@@ -1005,10 +1091,10 @@ function refreshPlanUI(){
   const st = AuthService.getState();
   const badge = $('planBadge');
   const approved = AuthService.isApproved();
-  const gated = !!AuthService.ACCESS_GATE;
+  const gated = !!AuthService.requiresGate();
   if (badge){
     badge.hidden = !gated || !approved;
-    badge.textContent = approved ? 'Invited' : (st.plan.name || '');
+    badge.textContent = approved ? (AuthService.BETA_GATE ? 'Beta' : 'Invited') : (st.plan.name || '');
     badge.classList.toggle('pro', approved);
   }
   if ($('upgradeBtn')) $('upgradeBtn').hidden = !AuthService.PAYMENTS_VISIBLE;
@@ -1020,7 +1106,7 @@ function refreshPlanUI(){
   if ($('accEmailHint')) $('accEmailHint').textContent = st.user ? st.user.email : '';
   if ($('accSignIn')){
     const b = $('accSignIn').querySelector('b');
-    if (b) b.textContent = approved ? 'Account' : 'Request access';
+    if (b) b.textContent = approved ? 'Account' : (AuthService.BETA_GATE ? 'Enter beta' : 'Request access');
   }
   const sel = $('textFont');
   if (sel){
@@ -2293,11 +2379,11 @@ $('snap').onclick = async ()=>{ const r = await capture3dPng({mode:'catalogue'})
 let gateMode = 'request';
 
 function openLanding(){
-  if (!AuthService.ACCESS_GATE){ $('landing').hidden = true; return; }
+  if (!AuthService.requiresGate()){ $('landing').hidden = true; return; }
   $('landing').hidden = false; syncGateView();
 }
 function closeLanding(){
-  if (AuthService.ACCESS_GATE && !AuthService.isApproved()){ openLanding(); return; }
+  if (AuthService.requiresGate() && !AuthService.isApproved()){ openLanding(); return; }
   $('landing').hidden = true;
 }
 function openAuth(){ openLanding(); setGateMode('login'); }
@@ -2319,21 +2405,25 @@ function setGateMode(mode){
 }
 
 function showGatePanel(which){
-  const form = $('gateForm'), pend = $('gatePending'), rej = $('gateRejected'), tabs = $('gateTabs');
+  const form = $('gateForm'), pend = $('gatePending'), rej = $('gateRejected'), tabs = $('gateTabs'), rev = $('gateRevoked');
   if (form) form.hidden = which !== 'form';
-  if (tabs) tabs.hidden = which !== 'form';
+  if (tabs) tabs.hidden = AuthService.BETA_GATE || which !== 'form';
   if (pend) pend.hidden = which !== 'pending';
   if (rej) rej.hidden = which !== 'rejected';
+  if (rev) rev.hidden = which !== 'revoked';
 }
 
 function syncGateView(){
   const u = AuthService.getUser();
-  if (!AuthService.ACCESS_GATE || AuthService.isApproved()){ $('landing').hidden = true; return; }
+  if (!AuthService.requiresGate() || AuthService.isApproved()){ $('landing').hidden = true; return; }
   $('landing').hidden = false;
-  if (u?.status === 'pending'){
+  const reason = AuthService.getState().reason;
+  if (reason === 'revoked'){
+    showGatePanel('revoked');
+  } else if (!AuthService.BETA_GATE && u?.status === 'pending'){
     if ($('gatePendingEmail')) $('gatePendingEmail').textContent = u.email;
     showGatePanel('pending');
-  } else if (u?.status === 'rejected'){
+  } else if (!AuthService.BETA_GATE && u?.status === 'rejected'){
     showGatePanel('rejected');
   } else {
     showGatePanel('form');
@@ -2371,10 +2461,14 @@ $('gateForm') && ($('gateForm').onsubmit = async ev=>{
   if ($('gateError')) $('gateError').textContent = '';
   const email = $('gateEmail').value;
   const name = $('gateName') ? $('gateName').value : '';
+  const code = $('gateCode') ? $('gateCode').value : '';
   const btn = $('gateSubmit');
   if (btn) btn.disabled = true;
   try {
-    if (gateMode === 'login'){
+    if (AuthService.BETA_GATE){
+      await AuthService.redeemCode({ email, code });
+      await enterIfApproved();
+    } else if (gateMode === 'login'){
       try {
         await AuthService.login({ email });
         await enterIfApproved();
@@ -2415,6 +2509,17 @@ $('gateTryAgain') && ($('gateTryAgain').onclick = ()=>{
   setGateMode('request');
   if ($('gateEmail') && email) $('gateEmail').value = email;
 });
+$('gateNewCode') && ($('gateNewCode').onclick = ()=>{
+  AuthService.logout();
+  showGatePanel('form');
+  if ($('gateError')) $('gateError').textContent = '';
+  if ($('gateCode')) $('gateCode').value = '';
+});
+if ($('gateCode')){
+  $('gateCode').addEventListener('input', ev=>{
+    ev.target.value = ev.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '');
+  });
+}
 
 // Legacy auth modal (kept in DOM, unused in invite mode)
 if ($('authTabIn')) $('authTabIn').onclick = ()=> setGateMode('login');
@@ -2682,17 +2787,18 @@ $('scPng').onclick = async ()=> download(await canvasBlob(scPngCanvas()), `size-
 $('scCopy').onclick = async ()=>{ scEnsure(); const tsv = [['Code','Point of measure', ...SIZES, 'Tol ±','Grade'], ...SC.rows.map((R,i)=>[R.c, POMS[i].n, ...R.v.map(scFmt), scFmt(R.tol), scFmt(R.grade)])].map(r=>r.join('\t')).join('\n');
   try { await navigator.clipboard.writeText(tsv); toast('Copied — paste into Excel or Google Sheets'); } catch(_){ toast('Could not copy. Use Download CSV instead.'); } };
 
-AuthService.onChange(()=> { refreshPlanUI(); if (AuthService.ACCESS_GATE && !AuthService.isApproved()) openLanding(); });
+AuthService.onChange(()=> { refreshPlanUI(); if (AuthService.requiresGate() && !AuthService.isApproved()) openLanding(); });
 refreshPlanUI();
 setGateMode('request');
 // The editor boots immediately; the server-side access check runs in parallel (it used to block the first frame).
-if (AuthService.ACCESS_GATE && AuthService.getUser()?.status === 'approved') $('landing').classList.add('checking');
-if (!AuthService.ACCESS_GATE) $('landing').hidden = true;
+if (AuthService.requiresGate() && AuthService.getUser()) $('landing').classList.add('checking');
+if (!AuthService.requiresGate()) $('landing').hidden = true;
+else $('landing').hidden = false;
 (async ()=>{
   try { await AuthService.init(); } catch(_){}
   $('landing').classList.remove('checking');
   refreshPlanUI();
-  if (!AuthService.ACCESS_GATE || AuthService.isApproved()) $('landing').hidden = true; else openLanding();
+  if (!AuthService.requiresGate() || AuthService.isApproved()) $('landing').hidden = true; else openLanding();
   await handleDecideLink();
 })();
 

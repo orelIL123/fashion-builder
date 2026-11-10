@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Fashion Builder — Beta admin</title>
+  <!-- FB-BETA-V1 -->
+  <style>
+    :root{
+      --bg:#141613; --surface:#1b1e1a; --raise:#232722; --line:#30352e; --text:#e9ece4; --muted:#9aa294;
+      --accent:#f2c14e; --danger:#e5625c; --ok:#8fbf7a;
+      --f-ui:"Familjen Grotesk","Helvetica Neue",Arial,sans-serif;
+      --f-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+      color-scheme:dark;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:var(--f-ui);padding:28px 20px 48px}
+    .wrap{max-width:920px;margin:0 auto;display:grid;gap:18px}
+    h1{margin:0;font-size:28px;letter-spacing:-.02em}
+    .sub{color:var(--muted);margin:0}
+    .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:22px;display:grid;gap:14px}
+    label{display:grid;gap:6px;font-size:13px;color:var(--muted)}
+    input{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;color:inherit;font:inherit}
+    .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    button,.btn{font:inherit;color:inherit;background:var(--raise);border:1px solid var(--line);border-radius:8px;padding:8px 12px;cursor:pointer}
+    button.primary{background:var(--accent);color:#1d1a10;border-color:var(--accent);font-weight:700}
+    button.danger{border-color:var(--danger);color:var(--danger)}
+    button.ok{border-color:var(--ok);color:var(--ok)}
+    button:disabled{opacity:.5;cursor:default}
+    .err{color:var(--danger);margin:0;min-height:1.2em}
+    .okmsg{color:var(--ok);margin:0}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+    th{color:var(--muted);font-weight:600}
+    .hint{font-family:var(--f-mono);letter-spacing:.04em}
+    .status{font-weight:700;text-transform:uppercase;font-size:11px;letter-spacing:.04em}
+    .status.active{color:var(--accent)}
+    .status.used{color:var(--ok)}
+    .status.revoked{color:var(--danger)}
+    .newcode{font-family:var(--f-mono);font-size:22px;letter-spacing:.08em;color:var(--accent);margin:0}
+    a{color:var(--accent)}
+    #panel[hidden],#login[hidden],#fresh[hidden]{display:none!important}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div>
+      <div class="sub">Fashion Builder</div>
+      <h1>Beta codes · ניהול קודים</h1>
+      <p class="sub">Revoke a code to block that tester on their next visit. A used code cannot be given to anyone else.</p>
+    </div>
+
+    <div class="card" id="login">
+      <label>Admin key / מפתח ניהול
+        <input id="adminKey" type="password" autocomplete="current-password" placeholder="Paste the admin key">
+      </label>
+      <p class="err" id="loginErr"></p>
+      <div class="row"><button class="primary" id="loginBtn" type="button">Open admin</button></div>
+    </div>
+
+    <div class="card" id="panel" hidden>
+      <div class="row" style="justify-content:space-between">
+        <p class="sub" id="count"></p>
+        <div class="row">
+          <button type="button" id="refreshBtn">Refresh</button>
+          <button class="primary" type="button" id="genBtn">Generate new code</button>
+          <button type="button" id="logoutBtn">Lock</button>
+        </div>
+      </div>
+      <p class="err" id="panelErr"></p>
+      <div id="fresh" hidden>
+        <p class="sub">New code — copy it now. It will not be shown again in full.</p>
+        <p class="newcode" id="freshCode"></p>
+        <div class="row"><button type="button" id="copyBtn">Copy</button></div>
+      </div>
+      <div style="overflow:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Code</th>
+              <th>Status</th>
+              <th>Email</th>
+              <th>Used at</th>
+              <th>Note</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <script>
+  const SUPABASE_URL = 'https://ilekmrkcsopsxckxefns.supabase.co';
+  const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlsZWttcmtjc29wc3hja3hlZm5zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwMjQyMzMsImV4cCI6MjEwMTYwMDIzM30.jga5TlzxyEFzgV6bsaSdzW_mQOtFo_i7-7dSd4gzvdU';
+  const FN = SUPABASE_URL + '/functions/v1/admin-codes';
+  const KEY = 'fb-admin-key-v1';
+
+  const $ = (id) => document.getElementById(id);
+  let adminKey = sessionStorage.getItem(KEY) || '';
+
+  async function call(body){
+    const res = await fetch(FN, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + ANON,
+        'apikey': ANON,
+        'x-admin-key': adminKey,
+      },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({ ok:false, error: res.statusText }));
+    data._http = res.status;
+    return data;
+  }
+
+  function fmtTime(iso){
+    if (!iso) return '—';
+    try {
+      return new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Jerusalem' }) + ' (Asia/Jerusalem)';
+    } catch { return iso; }
+  }
+
+  function showLogin(err){
+    $('panel').hidden = true;
+    $('login').hidden = false;
+    $('loginErr').textContent = err || '';
+  }
+  function showPanel(){
+    $('login').hidden = true;
+    $('panel').hidden = false;
+  }
+
+  function render(codes){
+    const body = $('rows');
+    body.innerHTML = '';
+    const n = { active:0, used:0, revoked:0 };
+    (codes || []).forEach(c => {
+      n[c.status] = (n[c.status] || 0) + 1;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="hint">${esc(c.code_hint)}</td>
+        <td class="status ${esc(c.status)}">${esc(c.status)}</td>
+        <td>${esc(c.used_by_email || '—')}</td>
+        <td>${esc(fmtTime(c.used_at))}</td>
+        <td>${esc(c.note || '')}</td>
+        <td class="row"></td>`;
+      const cell = tr.lastElementChild;
+      if (c.status === 'revoked'){
+        const b = document.createElement('button');
+        b.className = 'ok';
+        b.textContent = 'Restore';
+        b.onclick = () => act({ action:'restore', id:c.id });
+        cell.appendChild(b);
+      } else {
+        const b = document.createElement('button');
+        b.className = 'danger';
+        b.textContent = 'Revoke';
+        b.onclick = () => act({ action:'revoke', id:c.id });
+        cell.appendChild(b);
+      }
+      body.appendChild(tr);
+    });
+    $('count').textContent = `${(codes||[]).length} codes · ${n.active||0} active · ${n.used||0} used · ${n.revoked||0} revoked`;
+  }
+
+  function esc(s){
+    return String(s).replace(/[&<>"'`]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','`':'&#96;'}[c]));
+  }
+
+  async function loadList(){
+    $('panelErr').textContent = '';
+    const data = await call({ action:'list' });
+    if (!data.ok){
+      if (data._http === 401){ sessionStorage.removeItem(KEY); adminKey=''; showLogin(data.error || 'Unauthorized'); return false; }
+      $('panelErr').textContent = data.error || 'Could not load codes';
+      return false;
+    }
+    showPanel();
+    render(data.codes);
+    return true;
+  }
+
+  async function act(body){
+    $('panelErr').textContent = '';
+    const data = await call(body);
+    if (!data.ok){ $('panelErr').textContent = data.error || 'Action failed'; return; }
+    if (data.code){
+      $('fresh').hidden = false;
+      $('freshCode').textContent = data.code;
+    }
+    await loadList();
+  }
+
+  $('loginBtn').onclick = async ()=>{
+    adminKey = $('adminKey').value.trim();
+    $('loginErr').textContent = '';
+    if (!adminKey){ $('loginErr').textContent = 'Enter the admin key'; return; }
+    const ok = await loadList();
+    if (ok) sessionStorage.setItem(KEY, adminKey);
+  };
+  $('adminKey').addEventListener('keydown', e=>{ if (e.key === 'Enter') $('loginBtn').click(); });
+  $('refreshBtn').onclick = ()=> loadList();
+  $('genBtn').onclick = ()=> act({ action:'generate', note:'' });
+  $('logoutBtn').onclick = ()=>{ sessionStorage.removeItem(KEY); adminKey=''; $('adminKey').value=''; showLogin(''); };
+  $('copyBtn').onclick = async ()=>{
+    try { await navigator.clipboard.writeText($('freshCode').textContent); $('copyBtn').textContent = 'Copied'; }
+    catch { $('panelErr').textContent = 'Could not copy'; }
+  };
+
+  if (adminKey) loadList();
+  </script>
+</body>
+</html>

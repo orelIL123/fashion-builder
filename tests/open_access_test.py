@@ -107,6 +107,11 @@ def run_scenario(browser, name, storage=None):
     }
 
 def main():
+    # FB-BETA-V1 replaced the open editor. This suite is kept for when BETA_GATE is turned off.
+    marker_src = Path(__file__).resolve().parents[1].joinpath('src/index.src.html').read_text()
+    if 'FB-BETA-V1' in marker_src:
+        print('SKIP open_access_test: beta gate is on (FB-BETA-V1). Use tests/beta_gate_test.py.')
+        return
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
