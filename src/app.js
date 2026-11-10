@@ -50,16 +50,39 @@ function ensureLayerRoom(){
   openPricing();
   return false;
 }
+// Free-plan watermark: the Stylooks logo, small, bottom-right, on a soft dark pill so it reads on light and dark exports.
+const WM_LOGO = new Image(); WM_LOGO.decoding = 'async'; WM_LOGO.src = './assets/logo-dark.png';
+const wmReady = () => WM_LOGO.complete && WM_LOGO.naturalWidth > 0;
+function wmBox(w, h){
+  const lw = Math.round(Math.min(260, Math.max(100, w*0.1))), lh = Math.round(lw*WM_LOGO.naturalHeight/WM_LOGO.naturalWidth);
+  const pad = Math.round(lh*0.28), m = Math.max(12, Math.round(w*0.012));
+  return {lw, lh, pad, x: w - m - lw - pad*2, y: h - m - lh - pad*2};
+}
+// extra bottom room an export needs so the watermark never sits on a pattern piece
+const wmFooter = w => { if (!AuthService.needsWatermark() || !wmReady()) return 36; const b = wmBox(w, 0); return Math.max(36, -b.y + 8); };
 function drawWatermark(ctx, w, h){
   if (!AuthService.needsWatermark()) return;
   ctx.save();
-  ctx.globalAlpha = 0.55;
-  ctx.fillStyle = '#f2c14e';
-  ctx.font = `700 ${Math.max(14, Math.round(w*0.028))}px "Familjen Grotesk", sans-serif`;
-  ctx.textAlign = 'right';
-  ctx.textBaseline = 'bottom';
-  ctx.fillText('Fashion Builder · Free', w - 16, h - 14);
+  if (wmReady()){
+    const {lw, lh, pad, x, y} = wmBox(w, h);
+    ctx.globalAlpha = 0.85; ctx.fillStyle = 'rgba(12,12,16,.55)';
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, lw+pad*2, lh+pad*2, (lh+pad*2)/2) : ctx.rect(x, y, lw+pad*2, lh+pad*2); ctx.fill();
+    ctx.globalAlpha = 0.9; ctx.drawImage(WM_LOGO, x+pad, y+pad, lw, lh);
+  } else {
+    ctx.globalAlpha = 0.55; ctx.fillStyle = '#f2c14e';
+    ctx.font = `700 ${Math.max(14, Math.round(w*0.028))}px "Familjen Grotesk", sans-serif`;
+    ctx.textAlign = 'right'; ctx.textBaseline = 'bottom'; ctx.fillText('Stylooks · Free', w - 16, h - 14);
+  }
   ctx.restore();
+}
+function wmSvg(W, H){
+  if (!AuthService.needsWatermark()) return '';
+  if (wmReady()){
+    const {lw, lh, pad, x, y} = wmBox(W, H), c = document.createElement('canvas'); c.width = WM_LOGO.naturalWidth; c.height = WM_LOGO.naturalHeight;
+    c.getContext('2d').drawImage(WM_LOGO, 0, 0);
+    return `<rect x="${x}" y="${y}" width="${lw+pad*2}" height="${lh+pad*2}" rx="${(lh+pad*2)/2}" fill="rgb(12,12,16)" opacity="0.47"/><image href="${c.toDataURL('image/png')}" x="${x+pad}" y="${y+pad}" width="${lw}" height="${lh}" opacity="0.9"/>`;
+  }
+  return `<text x="${W-16}" y="${H-14}" text-anchor="end" font-family="Familjen Grotesk,sans-serif" font-size="18" font-weight="700" fill="#f2c14e" opacity="0.7">Stylooks · Free</text>`;
 }
 async function withWatermarkCanvas(srcCanvas){
   if (!AuthService.needsWatermark()) return srcCanvas;
@@ -1193,7 +1216,7 @@ $('loadDesign').onclick = async ()=>{
 
 async function buildPatternPngCanvas(){
   const B = SHOWN.map(dispBox); const minX=Math.min(...B.map(b=>b[0])), minY=Math.min(...B.map(b=>b[1])), maxX=Math.max(...B.map(b=>b[2])), maxY=Math.max(...B.map(b=>b[3]));
-  const pad=40; const c=document.createElement('canvas'); c.width=Math.ceil(maxX-minX+pad*2); c.height=Math.ceil(maxY-minY+pad*2+36);
+  const pad=40; const c=document.createElement('canvas'); c.width=Math.ceil(maxX-minX+pad*2); c.height=Math.ceil(maxY-minY+pad*2+wmFooter(c.width));
   const g=c.getContext('2d'); g.fillStyle='#10120f'; g.fillRect(0,0,c.width,c.height); g.translate(pad-minX, pad-minY);
   for (const p of SHOWN){ g.save(); g.translate(p.dx,p.dy); g.save(); g.clip(p.path); g.drawImage(tex,0,0); g.restore();
     g.strokeStyle='rgba(255,255,255,.25)'; g.lineWidth=1; g.stroke(p.path); g.restore(); }
@@ -1211,7 +1234,7 @@ function pathToSvgD(p){
 }
 async function exportPatternSvg(){
   const B = SHOWN.map(dispBox); const minX=Math.min(...B.map(b=>b[0])), minY=Math.min(...B.map(b=>b[1])), maxX=Math.max(...B.map(b=>b[2])), maxY=Math.max(...B.map(b=>b[3]));
-  const pad=40; const W=Math.ceil(maxX-minX+pad*2), H=Math.ceil(maxY-minY+pad*2+36);
+  const pad=40; const W=Math.ceil(maxX-minX+pad*2), H=Math.ceil(maxY-minY+pad*2+wmFooter(W));
   const sheetUrl = tex.toDataURL('image/png');
   let body = '';
   for (const p of SHOWN){
@@ -1219,9 +1242,7 @@ async function exportPatternSvg(){
     const tx = (p.dx + pad - minX).toFixed(2), ty = (p.dy + pad - minY).toFixed(2);
     body += `<g transform="translate(${tx},${ty})"><clipPath id="c-${p.id}"><path d="${d}"/></clipPath><image href="${sheetUrl}" width="${TEX}" height="${TEX}" clip-path="url(#c-${p.id})"/><path d="${d}" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="1"/></g>`;
   }
-  if (AuthService.needsWatermark()){
-    body += `<text x="${W-16}" y="${H-14}" text-anchor="end" font-family="Familjen Grotesk,sans-serif" font-size="18" font-weight="700" fill="#f2c14e" opacity="0.7">Fashion Builder · Free</text>`;
-  }
+  body += wmSvg(W, H);
   const svg = `<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="100%" height="100%" fill="#10120f"/>${body}</svg>`;
   const blob = new Blob([svg], {type:'image/svg+xml'});
   showModal({img:URL.createObjectURL(blob), blob, name:'pattern-sheet.svg', txt:'2D pattern as SVG (piece clips + print sheet).'});
@@ -1245,7 +1266,7 @@ function pieceCanvas(p, bleedCm=0, inside=false){
 function specSheet(){
   const W=1800, H=1300, c=document.createElement('canvas'); c.width=W; c.height=H; const g=c.getContext('2d');
   g.fillStyle='#fbfaf7'; g.fillRect(0,0,W,H); g.fillStyle='#16130c';
-  g.font='700 40px "Familjen Grotesk", sans-serif'; g.fillText('Fashion Builder — Tech pack', 60, 84);
+  g.font='700 40px "Familjen Grotesk", sans-serif'; g.fillText('Stylooks — Tech pack', 60, 84);
   g.font='18px "JetBrains Mono", monospace'; g.fillStyle='#555'; g.fillText(`${G.name} · ${G.sub} · ${new Date().toISOString().slice(0,10)} · units: cm`, 60, 118);
   const DB = SHOWN.map(dispBox); const bw = Math.max(...DB.map(b=>b[2]))-Math.min(...DB.map(b=>b[0])), bh = Math.max(...DB.map(b=>b[3]))-Math.min(...DB.map(b=>b[1]));
   const k = Math.min(900/bw, 1080/bh); g.save(); g.translate(60, 150); g.scale(k,k); g.translate(-Math.min(...DB.map(b=>b[0])), -Math.min(...DB.map(b=>b[1])));
@@ -1337,7 +1358,8 @@ async function recordTurntableInner(){
   let mctxLive = mirror.getContext('2d', { alpha: false });
   const stream = mirror.captureStream(0);
   const vtrack = stream.getVideoTracks()[0];
-  const mime = ['video/webm;codecs=vp8','video/webm;codecs=vp9','video/webm','video/mp4;codecs=avc1'].find(m=>MediaRecorder.isTypeSupported(m)) || '';
+  // MP4 (H.264) plays everywhere (Facebook, Instagram, iPhone); fall back to WebM where the browser cannot record MP4.
+  const mime = ['video/mp4;codecs=avc1.42E01E','video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'].find(m=>MediaRecorder.isTypeSupported(m)) || '';
   let rec;
   try { rec = new MediaRecorder(stream, mime ? {mimeType:mime, videoBitsPerSecond:4e6} : {videoBitsPerSecond:4e6}); }
   catch(_){ rec = new MediaRecorder(stream); }
@@ -1800,7 +1822,7 @@ function scDrawDiagram(g, w, h, ink, accent, paper){
   g.restore(); g.textBaseline = 'alphabetic';
 }
 function scCsv(){ scEnsure(); const q = v => { v = String(v); return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; }, u = SC.unit==='in' ? 'inch' : 'cm';
-  const L = [['Fashion Builder — size chart', G.name, G.sub, new Date().toISOString().slice(0,10)], ['Units', u, 'Garment laid flat. Widths are edge to edge (half measurements).'],
+  const L = [['Stylooks — size chart', G.name, G.sub, new Date().toISOString().slice(0,10)], ['Units', u, 'Garment laid flat. Widths are edge to edge (half measurements).'],
     ['Base size', SC.baseSize, SC.source==='pattern' ? 'Measured from the pattern, other sizes graded' : 'Standard '+SC.source+' fit'], [],
     ['Code','Point of measure','נקודת מדידה','How to measure', ...SIZES, 'Tolerance ±','Grade per size']];
   SC.rows.forEach((R,i)=> L.push([R.c, POMS[i].n, POMS[i].he, POMS[i].how, ...R.v.map(scFmt), scFmt(R.tol), scFmt(R.grade)]));

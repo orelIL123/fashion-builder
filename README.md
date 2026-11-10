@@ -18,10 +18,12 @@ Marker: `FB-BETA-V1` (in page source).
 - **Size chart:** a graded spec for the factory — 13 points of measure (A–M) measured from the pattern, XS–3XL, tolerances, grade rules, cm / inch, every cell editable, exports to CSV / PNG and is added to the print ZIP
 - **Garments:** a garment picker on the 3D pane (`?g=<id>`), driven by a small registry in `src/app.js`
 - **Design:** image and text layers on the **2D pattern map** (and 3D), click-to-place, opacity, flip, rotate handle, lock/duplicate/reorder, 35 fonts (incl. Hebrew), inside prints (neck label), solid or gradient fabric colour, rib colour, washes, save/load in browser
-- **Export:** 3D PNG (catalogue / dark / transparent), 2D pattern PNG + SVG, print files (ZIP), sublimation panels, spec sheet, **360° turntable video (~5s WebM/MP4)** (Pro)
+- **Export:** 3D PNG (catalogue / dark / transparent), 2D pattern PNG + SVG, print files (ZIP), sublimation panels, spec sheet, **360° turntable video (~5s, MP4 / H.264 when the browser can record it, WebM otherwise)** (Pro). Free-plan image exports carry a small Stylooks logo watermark (bottom-right, on its own footer strip on the pattern sheet so it never covers a piece); beta testers get no watermark.
 - **Access:** Beta gate — testers enter with an **email + one-time access code**. Approved testers get full editor features (all fonts, no watermark, video, up to 50 saved designs). A header note says **Currently free — pricing may change at any time / כרגע חינם — ייתכנו שינויים בכל עת**. The old invite-approval flow stays behind `ACCESS_GATE` (still `false`).
 
-Turntable video is recorded in-browser (2D mirror of the WebGL canvas + `captureStream(0)` / `requestFrame`). Some browsers omit duration metadata on the WebM; the file still plays.
+Turntable video is recorded in-browser (2D mirror of the WebGL canvas + `captureStream(0)` / `requestFrame`). MP4 (`avc1`) is preferred because it plays everywhere (Facebook, Instagram, iPhone); browsers that cannot record MP4 fall back to WebM (VP9 / VP8), which may omit duration metadata but still plays. The recorder runs on wall-clock time, so on a very slow GPU (software rendering) the clip comes out longer than 5 s.
+
+`tests/exports_visual_test.py` writes every export to `FB_OUT` (pattern PNG/SVG, catalogue, spec sheet, both ZIPs, the video and four frames from it); `FB_WATERMARK=1` forces the free-plan watermark on.
 
 ## Beta access
 The landing screen is labelled **גרסת בטא / Beta version**. A tester enters their email and a one-time access code (`FB-XXXX-XXXX`).
