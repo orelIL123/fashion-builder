@@ -60,6 +60,23 @@ Rebuild after edits: `python3 src/build.py` (bundles `auth.js` + `app.js` into `
 2. Put both in `assets/<id>/` and add one entry to `GARMENTS` at the top of `src/app.js` (`name`, `sub`, `glb`, `pattern`, `sleeve: 'raglan' | 'set-in'`).
 3. `python3 src/build.py`. The garment appears in the picker; the size chart measures it from its outlines (`front`, `back`, `sleeveR/L`, `rib`, and pieces labelled *Hem band* / *cuff* when present).
 
+## Hoodie (third garment, `?g=hoodie`)
+`assets/hoodie/hoodie.glb` + `assets/hoodie/pattern.json` come from a 3D **scan** (1.5M triangles, closed shell with an outer and an inner surface, a scan UV atlas of ~7,000 islands), not from a sewing pattern. `tools/hoodie-from-scan/` turns it into a garment the editor can use (`pip install fast-simplification trimesh embreex libigl shapely networkx scipy pillow`, then run `s1` … `s6` in order (s1 also writes `main.npz`, the largest connected shell), `HOODIE_OBJ=<scan.obj>`):
+
+1. `s1_decimate.py` — fast_simplification to 100k triangles (metres, y up, front +z).
+2. `s2_segment.py`, `s3b_layers.py`, `s3c_thickness.py` — keep only the **outer** fabric surface: an escape-ray visibility test plus "normal points away from the body / sleeve / hood axis". The lining is dropped; the app draws the garment double-sided and shows the inside print on the back faces, as with the tees.
+3. `s4_label.py` — pieces: multi-seed Dijkstra over the face graph with a crease penalty (body / sleeves / hood / drawstrings), shell thickness for the drawstrings, hem band = bottom 5.7 cm, cuffs = last 6.6 cm of each sleeve, front / back split at the side seams.
+4. `s5_flatten.py` — sleeves and cuffs are cut open along the underarm (shortest path between the two rims), every piece is flattened with **LSCM** and relaxed with ARAP at true scale (area error within ±5 % for 90 % of the triangles, no flipped triangles on the main pieces).
+5. `s6_pack_export.py` — pieces packed on the print sheet (1 cm apart), outlines traced, GLB written (fabric + rib meshes) and compressed with meshopt (`npx gltf-transform meshopt`).
+
+Result: 12 pieces — Front (pocket included), Back, Right / Left sleeve, Hood · right / left, Hem band · front / back, Right / Left cuff, Drawstring · right / left (the drawstrings are under **Trims**). 46k triangles, 378 KB.
+
+**Print sheet is 164 cm, not 128 cm:** the hoodie has 1.63 m² of fabric and a 128 cm sheet is only 1.64 m², so the pieces cannot fit at true size. Scaling them down would make every print size in cm wrong, so the sheet grows instead (2624 px at 16 px/cm).
+
+**Size chart:** defaults to *Standard · hoodie (Gildan 18500)* — chest, body length (HPS) and centre-back sleeve are the official published values; the other points are measured from the hoodie's own pattern pieces.
+
+**Known limits:** piece edges follow the scan's triangles, so outlines are a little ragged on the 2D table; the kangaroo pocket is part of the front piece (it is fused to the front in the scan); the drawstrings are flattened as half tubes.
+
 ## Vendored libraries
 `assets/vendor/three.fb.min.js` is built from `src/vendor/three-entry.js`. If `app.js` starts using a `THREE.*` name that is not exported there, `build.py` stops and names it: add it to the entry file and run `src/vendor/build.sh` (needs Node 18+).
 
@@ -75,6 +92,7 @@ Rebuild after edits: `python3 src/build.py` (bundles `auth.js` + `app.js` into `
 | `index.html` | built app |
 | `assets/shirt.glb`, `assets/pattern.json` | raglan tee + hanger (meshopt-compressed) and its pattern pieces |
 | `assets/fb/` | oversized tee (second garment) |
+| `assets/hoodie/` | pullover hoodie (third garment, from a 3D scan) — `tools/hoodie-from-scan/` rebuilds it |
 | `assets/vendor/` | three.js r170 bundle (MIT) and JSZip (MIT / GPLv3) |
 | `src/vendor/` | entry file + script that rebuild the three.js bundle |
 | `tests/` | Playwright checks (`speed_coverage_sizechart_test.py` covers speed, dead zones and the size chart) |

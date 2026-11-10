@@ -667,7 +667,7 @@ label.field{grid-template-columns:96px 1fr 48px}
       <button class="icon" id="scClose" aria-label="Close" title="Close"><svg width="16" height="16" viewBox="0 0 16 16"><path d="m3.5 3.5 9 9m0-9-9 9" stroke="currentColor" stroke-width="1.6" fill="none"/></svg></button>
     </div>
     <div class="sc-controls">
-      <label>Measurements<select id="scSource"><option value="pattern">From this pattern</option><option value="classic">Standard · classic fit</option><option value="oversized">Standard · oversized fit</option></select></label>
+      <label>Measurements<select id="scSource"><option value="pattern">From this pattern</option><option value="classic">Standard · classic fit</option><option value="oversized">Standard · oversized fit</option><option value="gildan18500" hidden>Standard · hoodie (Gildan 18500)</option></select></label>
       <label id="scBaseRow">The pattern is size<select id="scBase"></select></label>
       <div class="sc-unit"><span>Units</span><div class="seg small" role="group" aria-label="Chart units"><button id="scCm" aria-pressed="true">cm</button><button id="scIn" aria-pressed="false">inch</button></div></div>
     </div>
@@ -1046,6 +1046,7 @@ mark('start');
 const GARMENTS = {
   raglan:    {name:'Raglan tee',    sub:"Men's crew neck",               glb:'assets/shirt.glb',    pattern:null, sleeve:'raglan'},
   oversized: {name:'Oversized tee', sub:"Men's crew neck · drop shoulder", glb:'assets/fb/shirt.glb', pattern:'assets/fb/pattern.json', sleeve:'set-in'},
+  hoodie:    {name:'Pullover hoodie', sub:'Unisex · set-in sleeve · kangaroo pocket', glb:'assets/hoodie/hoodie.glb', pattern:'assets/hoodie/pattern.json', sleeve:'set-in', chart:'gildan18500'},
 };
 let GID = new URLSearchParams(location.search).get('g') || 'raglan'; if (!GARMENTS[GID]) GID = 'raglan';
 let PATTERN = null;
@@ -1159,7 +1160,7 @@ function refreshPlanUI(){
 
 // ---------- pattern pieces in sheet-pixel space (y down = glTF UV space) ----------
 const USER = PATTERN.source==='user';
-const WEARER = USER ? {} : {sleeveR:'Left sleeve', sleeveL:'Right sleeve'};
+const WEARER = (USER || PATTERN.labels==='wearer') ? {} : {sleeveR:'Left sleeve', sleeveL:'Right sleeve'}; // labels:'wearer' = ids already name the wearer's side
 const pieces = PATTERN.pieces.map(p => { p = {...p, label: WEARER[p.id] || p.label};
   const pts = p.outline.map(([x,y]) => [x*PX, (SHEET_CM - y)*PX]);
   const path = new Path2D(); pts.forEach(([x,y],i)=> i?path.lineTo(x,y):path.moveTo(x,y)); path.closePath();
@@ -1835,7 +1836,7 @@ function repairCoverage(){
 const G3D = {w:0, h:0}; // draped garment size in cm (used by the size chart)
 function renderSpec(){ if (!shirtMeshes.length) return;
   const tris = shirtMeshes.reduce((a,m)=>a+(m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count)/3,0);
-  $('spec').innerHTML = `Garment <b>${G3D.w.toFixed(0)} × ${G3D.h.toFixed(0)} cm</b> as draped<br>Mesh <b>${(tris/1000).toFixed(0)}k triangles</b>, ${USER?'your CLO garment':'cloth-simulated'}, ${mainPieces().length} pattern pieces<br>Print sheet <b>${SHEET_CM} × ${SHEET_CM} cm · ${Math.floor(TEX)}px</b> (${PX} px/cm)`
+  $('spec').innerHTML = `Garment <b>${G3D.w.toFixed(0)} × ${G3D.h.toFixed(0)} cm</b> as draped<br>Mesh <b>${(tris/1000).toFixed(0)}k triangles</b>, ${USER?'your CLO garment':PATTERN.source==='scan'?'3D scan, flattened to pattern pieces':'cloth-simulated'}, ${mainPieces().length} pattern pieces<br>Print sheet <b>${SHEET_CM} × ${SHEET_CM} cm · ${Math.floor(TEX)}px</b> (${PX} px/cm)`
     + (COVER.done ? `<br>Printable coverage <b>100%</b>${COVER.tris ? ` — ${COVER.cm2.toFixed(0)} cm² of untraced seam area auto-repaired` : ''}` : ''); }
 let shirtMeshes = [], hangerMeshes = [], hookMeshes = [];
 let FIT = {dist:2.2, cy:0, h:0.8, w:0.8};
@@ -2742,7 +2743,9 @@ const POMS = [
   {c:'B', n:'Bottom hem width',   he:'רוחב מכפלת תחתונה',         how:'Edge to edge at the hem',                           grade:5,   tol:1},
   {c:'C', n:'Body length (HPS)',  he:'אורך גוף מנקודת כתף גבוהה', how:'High point shoulder straight down to the hem',      grade:2.5, tol:1.5},
   {c:'D', n:'Centre back length', he:'אורך גב מרכזי',             how:'Back neck seam to the hem, along centre back',      grade:2.5, tol:1.5},
-  {c:'E', n:'Sleeve length',      he:'אורך שרוול',                how: G.sleeve==='raglan' ? 'Neck seam to sleeve hem, along the top fold (raglan)' : 'Shoulder seam to sleeve hem, along the top fold', grade:1.5, tol:1},
+  G.chart==='gildan18500'
+    ? {c:'E', n:'Sleeve length (centre back)', he:'אורך שרוול ממרכז הגב', how:'Centre back neck, over the shoulder and down the sleeve to the cuff hem', grade:2.5, tol:1}
+    : {c:'E', n:'Sleeve length',      he:'אורך שרוול',                how: G.sleeve==='raglan' ? 'Neck seam to sleeve hem, along the top fold (raglan)' : 'Shoulder seam to sleeve hem, along the top fold', grade:1.5, tol:1},
   {c:'F', n:'Sleeve opening',     he:'פתח שרוול',                 how:'Edge to edge at the sleeve hem',                    grade:1,   tol:0.5},
   {c:'G', n:'Upper arm width',    he:'רוחב זרוע עליונה',          how:'2.5 cm below the armhole, square to the top fold',  grade:1,   tol:0.5},
   {c:'H', n:'Neck width',         he:'רוחב צווארון',              how:'Seam to seam, straight across',                     grade:0.5, tol:0.5},
@@ -2756,8 +2759,12 @@ const RAG = G.sleeve==='raglan';
 const SC_PRESETS = {
   classic:   {base:'M', v:{A:51, B:51, C:73.5, D:71,   E:RAG?36:21,   F:18,   G:20.5, H:18.5, I:9.5, J:2.5, K:2,   L:2.5, M:2.5}, grade:{}},
   oversized: {base:'M', v:{A:58, B:58, C:74,   D:71.5, E:RAG?39.5:24, F:20.5, G:24,   H:19.5, I:9.5, J:2.5, K:2.2, L:2.5, M:2.5}, grade:{A:4, B:4, C:2, D:2}},
+  // Gildan 18500 Heavy Blend hoodie (official sheet: chest, body length, centre-back sleeve; inches ×2.54). Only A, C, E are
+  // published — the other points are measured from this garment's pattern pieces (fill:'pattern').
+  gildan18500: {base:'M', v:{A:55.9, C:71.1, E:86.4}, grade:{A:5.1, C:2.5, E:2.5}, tol:{A:1.2, C:1.5, E:1}, fill:'pattern',
+    exact:{A:{'XS':45.7, 'S':50.8, 'M':55.9, 'L':61.0, 'XL':66.0, '2XL':71.1, '3XL':76.2}, C:{'XS':66.0, 'S':68.6, 'M':71.1, 'L':73.7, 'XL':76.2, '2XL':78.7, '3XL':81.3}, E:{'XS':82.6, 'S':83.8, 'M':86.4, 'L':88.9, 'XL':91.4, '2XL':94.0, '3XL':96.5}}}, // official published values per size (the grade above only drives edits)
 };
-const SC = {source:'pattern', base:null, baseSize:'M', rows:null, auto:{}, edited:false, unit:'cm'};
+const SC = {source: G.chart || 'pattern', base:null, baseSize:'M', rows:null, auto:{}, edited:false, unit:'cm'};
 function chordAt(p, y){ let lo = Infinity, hi = -Infinity; const pts = p.pts, n = pts.length;
   for (let i=0;i<n;i++){ const [x0,y0] = pts[i], [x1,y1] = pts[(i+1)%n]; if (y0===y1 || (y0-y)*(y1-y) > 0) continue; const x = x0+(x1-x0)*(y-y0)/(y1-y0); if (x<lo) lo = x; if (x>hi) hi = x; }
   return hi > lo ? hi-lo : 0; }
@@ -2798,9 +2805,11 @@ function scBuild(){
   let baseVals, baseSize, grades = {}; SC.auto = {};
   if (SC.source === 'pattern'){ const m = measurePattern(), pre = SC_PRESETS.classic; baseSize = SC.base || scNearestSize(m.A || 51); const bi = SIZES.indexOf(baseSize); baseVals = {};
     for (const P of POMS){ if (m[P.c] > 0){ baseVals[P.c] = m[P.c]; SC.auto[P.c] = true; } else baseVals[P.c] = pre.v[P.c] + P.grade*(bi-SIZES.indexOf(pre.base)); } }
-  else { const pre = SC_PRESETS[SC.source]; baseSize = pre.base; baseVals = pre.v; grades = pre.grade; }
-  const bi = SIZES.indexOf(baseSize);
-  SC.rows = POMS.map(P=>{ const g = grades[P.c] ?? P.grade; return {c:P.c, grade:g, tol:P.tol, v:SIZES.map((_,i)=> Math.max(0.5, r1(baseVals[P.c] + g*(i-bi))))}; });
+  else { const pre = SC_PRESETS[SC.source]; baseSize = pre.base; grades = pre.grade; baseVals = {...pre.v};
+    if (pre.fill === 'pattern'){ const m = measurePattern(), cl = SC_PRESETS.classic; for (const P of POMS) if (baseVals[P.c] == null) baseVals[P.c] = m[P.c] > 0 ? r1(m[P.c]) : cl.v[P.c]; } }
+  const bi = SIZES.indexOf(baseSize), pre = SC_PRESETS[SC.source] || {};
+  SC.rows = POMS.map(P=>{ const g = grades[P.c] ?? P.grade, ex = (pre.exact||{})[P.c] || {};
+    return {c:P.c, grade:g, tol:(pre.tol||{})[P.c] ?? P.tol, v:SIZES.map((z,i)=> ex[z] ?? Math.max(0.5, r1(baseVals[P.c] + g*(i-bi))))}; });
   SC.baseSize = baseSize; SC.edited = false;
 }
 const scStoreKey = 'fb-sizechart-v1-'+GID;
@@ -2884,10 +2893,11 @@ $('sizeChartBtn').onclick = openSizeChart;
 $('scClose').onclick = ()=>{ $('sizeModal').hidden = true; };
 $('sizeModal').addEventListener('click', e=>{ if (e.target === $('sizeModal')) $('sizeModal').hidden = true; });
 addEventListener('keydown', e=>{ if (e.key==='Escape' && !$('sizeModal').hidden) $('sizeModal').hidden = true; });
+{ const o = document.querySelector('#scSource option[value="gildan18500"]'); if (o) o.hidden = G.chart !== 'gildan18500'; }
 $('scSource').onchange = e=>{ SC.source = e.target.value; SC.base = null; scBuild(); try { localStorage.removeItem(scStoreKey); } catch(_){} scRender(); };
 $('scBase').onchange = e=>{ SC.base = e.target.value; scBuild(); scSave(); scRender(); };
 $('scCm').onclick = ()=>{ SC.unit = 'cm'; scRender(); }; $('scIn').onclick = ()=>{ SC.unit = 'in'; scRender(); };
-$('scReset').onclick = ()=>{ SC.base = null; SC.source = 'pattern'; try { localStorage.removeItem(scStoreKey); } catch(_){} scBuild(); scRender(); toast('Size chart reset to the pattern'); };
+$('scReset').onclick = ()=>{ SC.base = null; SC.source = G.chart || 'pattern'; try { localStorage.removeItem(scStoreKey); } catch(_){} scBuild(); scRender(); toast(G.chart ? 'Size chart reset to the standard hoodie chart' : 'Size chart reset to the pattern'); };
 $('scCsv').onclick = ()=> download(new Blob([scCsv()], {type:'text/csv;charset=utf-8'}), `size-chart-${GID}.csv`);
 $('scPng').onclick = async ()=> download(await canvasBlob(scPngCanvas()), `size-chart-${GID}.png`);
 $('scCopy').onclick = async ()=>{ scEnsure(); const tsv = [['Code','Point of measure', ...SIZES, 'Tol ±','Grade'], ...SC.rows.map((R,i)=>[R.c, POMS[i].n, ...R.v.map(scFmt), scFmt(R.tol), scFmt(R.grade)])].map(r=>r.join('\t')).join('\n');
