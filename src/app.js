@@ -241,8 +241,15 @@ function ensureBrushLayer(inside){
   return L;
 }
 function brushRadiusPx(){ return Math.max(0.5, BRUSH.sizeCm * PX / 2); }
-function stampBrush(L, x, y){
+// Pieces are packed a few pixels apart on the print sheet, and sheet neighbours are unrelated parts of the garment.
+// So every stamp is clipped to the piece under the pointer: paint near an edge can never spill onto another part.
+function stampBrush(L, x, y, piece){
   if (!L || !L.src) return;
+  const g = L.src.getContext('2d'), clip = piece ? piece.path : COVER.path;
+  g.save(); if (clip) g.clip(clip);
+  try { stampRaw(L, x, y); } finally { g.restore(); }
+}
+function stampRaw(L, x, y){
   const g = L.src.getContext('2d');
   const r = brushRadiusPx();
   const hard = Math.max(0.05, Math.min(0.98, BRUSH.hardness));
@@ -264,12 +271,12 @@ function stampBrush(L, x, y){
   }
   L.thumb = null; L.rev = (L.rev|0)+1;
 }
-function strokeBrush(L, x0,y0,x1,y1){
+function strokeBrush(L, x0,y0,x1,y1, piece){
   const dist = Math.hypot(x1-x0,y1-y0);
   const step = Math.max(1, brushRadiusPx() * 0.35);
-  if (dist < 0.01){ stampBrush(L, x1, y1); return; }
+  if (dist < 0.01){ stampBrush(L, x1, y1, piece); return; }
   const n = Math.max(1, Math.ceil(dist/step));
-  for (let i=0;i<=n;i++){ const t=i/n; stampBrush(L, x0+(x1-x0)*t, y0+(y1-y0)*t); }
+  for (let i=0;i<=n;i++){ const t=i/n; stampBrush(L, x0+(x1-x0)*t, y0+(y1-y0)*t, piece); }
 }
 function setBrushMode(on){
   BRUSH.on = !!on;
@@ -409,6 +416,7 @@ function paintLayers(g, inside){
     g.save(); g.globalAlpha = L.opacity ?? 1;
     if (L.kind==='brush'){ g.drawImage(L.src, 0, 0); }
     else {
+      const lp = pieceAt(L.x, L.y); if (lp) g.clip(lp.path); // artwork stays on the piece it sits on (no spill onto sheet neighbours)
       g.translate(L.x, L.y); g.rotate(L.rot*Math.PI/180);
       const sx = L.flipX ? -1 : 1, sy = L.flipY ? -1 : 1; if (sx!==1||sy!==1) g.scale(sx, sy);
       const w=L.w, h=L.w*L.aspect; g.drawImage(L.src,-w/2,-h/2,w,h);
@@ -554,7 +562,7 @@ pc.addEventListener('pointerdown', e=>{
     if (!hit){ toast('Paint on a pattern piece'); return; }
     const L = ensureBrushLayer(PV.inside); if (!L) return;
     select(L.id);
-    stampBrush(L, hit.sx, hit.sy);
+    stampBrush(L, hit.sx, hit.sy, hit.p);
     pdrag = {mode:'brush', L, last:[hit.sx, hit.sy], piece:hit.p};
     composeSheet();
     pc.setPointerCapture(e.pointerId); return;
@@ -604,7 +612,7 @@ pc.addEventListener('pointermove', e=>{
   if (pdrag.mode==='brush'){
     const hit = fromDisplay(dx,dy);
     if (hit){ // crossing to another piece jumps elsewhere on the print sheet: stamp, don't drag a streak across it
-      if (hit.p === pdrag.piece) strokeBrush(pdrag.L, pdrag.last[0], pdrag.last[1], hit.sx, hit.sy); else stampBrush(pdrag.L, hit.sx, hit.sy);
+      if (hit.p === pdrag.piece) strokeBrush(pdrag.L, pdrag.last[0], pdrag.last[1], hit.sx, hit.sy, hit.p); else stampBrush(pdrag.L, hit.sx, hit.sy, hit.p);
       pdrag.last=[hit.sx,hit.sy]; pdrag.piece=hit.p; composeSheet(); }
     return;
   }
@@ -833,7 +841,7 @@ glc.addEventListener('pointerdown', e=>{
   const uv = hitUV(e); if(!uv) return;
   if (BRUSH.on){
     const L = ensureBrushLayer(false); if (!L) return;
-    select(L.id); stampBrush(L, uv[0], uv[1]);
+    select(L.id); stampBrush(L, uv[0], uv[1], pieceAt(uv[0],uv[1]));
     gdrag = {mode:'brush', L, last:uv.slice(), piece:pieceAt(uv[0],uv[1])}; controls.enabled = false; glc.setPointerCapture(e.pointerId); composeSheet(); return;
   }
   const L = hitLayer(...uv, false); if(!L) return;
@@ -844,7 +852,7 @@ glc.addEventListener('pointermove', e=>{
   if(!gdrag){ if (e.buttons) return; const now = performance.now(); if (now-lastHover < 40) return; lastHover = now; const uv=hitUV(e); glc.style.cursor = BRUSH.on ? (uv?'crosshair':'grab') : (uv && hitLayer(...uv,false) ? 'move' : 'grab'); return; }
   const uv = hitUV(e); if(!uv) return;
   if (gdrag.mode==='brush'){ const p = pieceAt(uv[0],uv[1]); // a seam is a jump on the print sheet — never interpolate across it
-    if (p === gdrag.piece && Math.hypot(uv[0]-gdrag.last[0], uv[1]-gdrag.last[1]) < 12*PX) strokeBrush(gdrag.L, gdrag.last[0], gdrag.last[1], uv[0], uv[1]); else stampBrush(gdrag.L, uv[0], uv[1]);
+    if (p === gdrag.piece && Math.hypot(uv[0]-gdrag.last[0], uv[1]-gdrag.last[1]) < 12*PX) strokeBrush(gdrag.L, gdrag.last[0], gdrag.last[1], uv[0], uv[1], p); else stampBrush(gdrag.L, uv[0], uv[1], p);
     gdrag.last=uv.slice(); gdrag.piece=p; composeSheet(); return; }
   // allow moving across pieces (front ↔ back ↔ sleeves) via UV
   gdrag.L.x = uv[0]-gdrag.dx; gdrag.L.y = uv[1]-gdrag.dy; composeSheet();
