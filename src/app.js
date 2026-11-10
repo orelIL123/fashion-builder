@@ -245,7 +245,7 @@ function brushRadiusPx(){ return Math.max(0.5, BRUSH.sizeCm * PX / 2); }
 // So every stamp is clipped to the piece under the pointer: paint near an edge can never spill onto another part.
 function stampBrush(L, x, y, piece){
   if (!L || !L.src) return;
-  const g = L.src.getContext('2d'), clip = piece ? piece.path : COVER.path;
+  const g = L.src.getContext('2d'), pc = piece || pieceAt(x, y), clip = pc ? pc.path : COVER.path;
   g.save(); if (clip) g.clip(clip);
   try { stampRaw(L, x, y); } finally { g.restore(); }
 }
