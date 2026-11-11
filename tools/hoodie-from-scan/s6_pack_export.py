@@ -11,22 +11,23 @@ ORDER=['front','back','sleeveR','sleeveL','hoodR','hoodL','hemF','hemB','cuffR',
 PC={}
 for k in ORDER:
     d=np.load(f'piece_{k}.npz'); uv=d['uv']-d['uv'].min(0); PC[k]=dict(v=d['v'],f=d['f'],uv=uv,src=d['src'])
+def chaikin(pts, it=3):
+    P=np.asarray(pts,float)
+    for _ in range(it):
+        Q=np.roll(P,-1,0); P=np.stack([0.75*P+0.25*Q, 0.25*P+0.75*Q],1).reshape(-1,2)
+    return P
 def outline(uv,f):
-    e=np.sort(np.vstack([f[:,[0,1]],f[:,[1,2]],f[:,[2,0]]]),1); ue,c=np.unique(e,axis=0,return_counts=True)
-    G=nx.Graph(); G.add_edges_from(map(tuple,ue[c==1])); loops=list(nx.connected_components(G))
-    # exterior = loop enclosing the largest area
-    best=None
-    for L in loops:
-        try: cyc=[u for u,_ in nx.find_cycle(G.subgraph(L))]
-        except Exception: continue
-        poly=Polygon(uv[cyc]); 
-        if best is None or abs(poly.area)>abs(best[1].area): best=(cyc,poly)
-    poly=best[1].buffer(0)
+    """Piece outline: union of the piece's UV triangles -> morphological close (fills scan notches) ->
+    Douglas-Peucker -> Chaikin corner cutting. True scale is kept (cm in, cm out)."""
+    from shapely.ops import unary_union
+    tri=[Polygon(uv[t]).buffer(0.02) for t in f if Polygon(uv[t]).area>1e-8]
+    poly=unary_union(tri)
     if poly.geom_type!='Polygon': poly=max(poly.geoms,key=lambda g:g.area)
-    poly=Polygon(poly.exterior).buffer(0.9,join_style=1).buffer(-0.9,join_style=1)
+    poly=Polygon(poly.exterior).buffer(1.5,join_style=1).buffer(-1.5,join_style=1)
     if poly.geom_type!='Polygon': poly=max(poly.geoms,key=lambda g:g.area)
-    poly=Polygon(poly.exterior).simplify(0.15,preserve_topology=True)
-    return poly
+    poly=Polygon(poly.exterior).simplify(0.35,preserve_topology=True)
+    sm=Polygon(chaikin(np.array(poly.exterior.coords)[:-1],3)).simplify(0.05,preserve_topology=True)
+    return sm if sm.is_valid else poly
 def mask(uv,f,pad):
     sz=np.ceil((uv.max(0)+2*pad)*RES).astype(int)+2
     im=Image.new('1',(sz[0],sz[1]),0); dr=ImageDraw.Draw(im)
@@ -66,14 +67,43 @@ for k in ORDER:
 img.save('sheet_layout.png')
 pat={'sheetCm':S,'pxPerCm':16,'source':'scan','labels':'wearer','mirrorSleeve':False,'stitches':False,'pieces':pieces}
 json.dump(pat,open('pattern.json','w'),separators=(',',':'))
-# ---- GLB (two meshes: fabric, rib) with smooth normals from the full shell
-main=np.load('main.npz'); mm=trimesh.Trimesh(main['V'],main['F'],process=False); VN=mm.vertex_normals
+# ---- GLB: the WHOLE closed shell (outer pieces + lining + rims + hidden faces), so nothing is missing in 3D.
+# Outer piece faces keep their flattened UVs. Every other face takes the UVs of the nearest outer piece face, by an
+# affine map of that face's plane (so a lining face prints exactly behind its outer face and never spans a UV cut).
+# All faces share the scan's vertex positions and smooth normals: only UVs split, so there are no cracks.
+main=np.load('main.npz'); MV=main['V'].astype(np.float64); MF=main['F']; mm=trimesh.Trimesh(MV,MF,process=False); VN=mm.vertex_normals
+oT=[];oUV=[];oK=[];oS=[]
+for k in ORDER:
+    c=PC[k]; oT.append(c['v'][c['f']]); oUV.append(np.c_[c['uv2'][:,0],c['uv2'][:,1]][c['f']]); oK+= [k]*len(c['f']); oS.append(c['src'][c['f']])
+oT=np.vstack(oT); oUV=np.vstack(oUV); oK=np.array(oK); oS=np.vstack(oS)
+outer_keys=set(map(tuple,np.sort(oS,1)))
+rest=np.array([i for i,t in enumerate(np.sort(MF,1)) if tuple(t) not in outer_keys])
+print('outer faces',len(oT),'other faces (lining, rims, hidden)',len(rest))
+omesh=trimesh.Trimesh(oT.reshape(-1,3),np.arange(len(oT)*3).reshape(-1,3),process=False)
+cen=MV[MF[rest]].mean(1)
+_,_,tid=trimesh.proximity.closest_point(omesh,cen)
+def affine_uv(tri3,tri2,pts):
+    a,b,c=tri3; e1=b-a; e2=c-a; n=np.cross(e1,e2); n/=np.linalg.norm(n)+1e-12
+    M=np.stack([e1,e2,n],1); w=np.linalg.lstsq(M,(pts-a).T,rcond=None)[0].T  # (s,t,h)
+    return tri2[0]+w[:,:1]*(tri2[1]-tri2[0])+w[:,1:2]*(tri2[2]-tri2[0])
+rUV=np.zeros((len(rest),3,2))
+for j,(f,t) in enumerate(zip(rest,tid)): rUV[j]=affine_uv(oT[t],oUV[t],MV[MF[f]])
+rK=oK[tid]
 def build(keys):
     P=[];N=[];T=[];I=[];base=0
+    # outer faces: shared vertices inside each piece
     for k in keys:
         c=PC[k]; P.append(c['v']); N.append(VN[c['src']]); T.append(np.c_[c['uv2'][:,0]/S,(S-c['uv2'][:,1])/S]); I.append(c['f']+base); base+=len(c['v'])
+    # other faces: weld vertices that share both position and UV
+    sel=np.isin(rK,keys); fs=MF[rest[sel]]; uvs=rUV[sel]
+    key=np.c_[fs.reshape(-1,1),np.round(uvs.reshape(-1,2)*200)]
+    uk,inv=np.unique(key,axis=0,return_inverse=True); inv=inv.ravel()
+    first=np.zeros(len(uk),int); first[inv[::-1]]=np.arange(len(inv))[::-1]
+    vid=fs.reshape(-1)[first]; uvv=uvs.reshape(-1,2)[first]
+    P.append(MV[vid]); N.append(VN[vid]); T.append(np.c_[uvv[:,0]/S,(S-uvv[:,1])/S]); I.append(inv.reshape(-1,3)+base)
     return [np.vstack(a).astype(np.float32) for a in (P,N,T)]+[np.vstack(I).astype(np.uint32).ravel()]
-fab=build([k for k in ORDER if not (k.startswith('cuff') or k.startswith('hem'))]); rib=build([k for k in ORDER if k.startswith('cuff') or k.startswith('hem')])
+RIBK=[k for k in ORDER if k.startswith('cuff') or k.startswith('hem')]
+fab=build([k for k in ORDER if k not in RIBK]); rib=build(RIBK)
 bin_=b''; views=[]; acc=[]
 def add(arr,target,typ,comp,minmax=False):
     global bin_

@@ -64,18 +64,18 @@ Rebuild after edits: `python3 src/build.py` (bundles `auth.js` + `app.js` into `
 `assets/hoodie/hoodie.glb` + `assets/hoodie/pattern.json` come from a 3D **scan** (1.5M triangles, closed shell with an outer and an inner surface, a scan UV atlas of ~7,000 islands), not from a sewing pattern. `tools/hoodie-from-scan/` turns it into a garment the editor can use (`pip install fast-simplification trimesh embreex libigl shapely networkx scipy pillow`, then run `s1` … `s6` in order (s1 also writes `main.npz`, the largest connected shell), `HOODIE_OBJ=<scan.obj>`):
 
 1. `s1_decimate.py` — fast_simplification to 100k triangles (metres, y up, front +z).
-2. `s2_segment.py`, `s3b_layers.py`, `s3c_thickness.py` — keep only the **outer** fabric surface: an escape-ray visibility test plus "normal points away from the body / sleeve / hood axis". The lining is dropped; the app draws the garment double-sided and shows the inside print on the back faces, as with the tees.
+2. `s2_segment.py`, `s3b_layers.py`, `s3c_thickness.py` — find the **outer** fabric surface (escape-ray visibility test plus "normal points away from the body / sleeve / hood axis"). Only these faces are flattened into pattern pieces.
 3. `s4_label.py` — pieces: multi-seed Dijkstra over the face graph with a crease penalty (body / sleeves / hood / drawstrings), shell thickness for the drawstrings, hem band = bottom 5.7 cm, cuffs = last 6.6 cm of each sleeve, front / back split at the side seams.
 4. `s5_flatten.py` — sleeves and cuffs are cut open along the underarm (shortest path between the two rims), every piece is flattened with **LSCM** and relaxed with ARAP at true scale (area error within ±5 % for 90 % of the triangles, no flipped triangles on the main pieces).
 5. `s6_pack_export.py` — pieces packed on the print sheet (1 cm apart), outlines traced, GLB written (fabric + rib meshes) and compressed with meshopt (`npx gltf-transform meshopt`).
 
-Result: 12 pieces — Front (pocket included), Back, Right / Left sleeve, Hood · right / left, Hem band · front / back, Right / Left cuff, Drawstring · right / left (the drawstrings are under **Trims**). 46k triangles, 378 KB.
+Result: 12 pieces — Front (pocket included), Back, Right / Left sleeve, Hood · right / left, Hem band · front / back, Right / Left cuff, Drawstring · right / left (the drawstrings are under **Trims**). The GLB ships the **whole closed shell** (≈100k triangles, 2.1 MB with meshopt): outer piece faces carry the flattened UVs, and every other face (lining, cuff / hem / hood rims, underarms, the back half of the drawstrings) takes the UVs of its nearest outer face through that face's affine map, so it prints exactly behind it. All faces share the scan's vertex positions and smooth normals; only UVs split, so there are no holes or cracks from any angle. `angles.py <prefix>` renders 8 views (front, back, sides, top, under, low, inside the hood) to check this.
 
 **Print sheet is 164 cm, not 128 cm:** the hoodie has 1.63 m² of fabric and a 128 cm sheet is only 1.64 m², so the pieces cannot fit at true size. Scaling them down would make every print size in cm wrong, so the sheet grows instead (2624 px at 16 px/cm).
 
 **Size chart:** defaults to *Standard · hoodie (Gildan 18500)* — chest, body length (HPS) and centre-back sleeve are the official published values; the other points are measured from the hoodie's own pattern pieces.
 
-**Known limits:** piece edges follow the scan's triangles, so outlines are a little ragged on the 2D table; the kangaroo pocket is part of the front piece (it is fused to the front in the scan); the drawstrings are flattened as half tubes.
+**Known limits:** 2D outlines are the union of the piece triangles, closed (1.5 cm), Douglas-Peucker simplified and Chaikin-smoothed at true scale, but they still follow the scan's organic shape rather than drafted straight seams; the kangaroo pocket is part of the front piece (it is fused to the front in the scan); the drawstrings are flattened as half tubes.
 
 ## Vendored libraries
 `assets/vendor/three.fb.min.js` is built from `src/vendor/three-entry.js`. If `app.js` starts using a `THREE.*` name that is not exported there, `build.py` stops and names it: add it to the entry file and run `src/vendor/build.sh` (needs Node 18+).
