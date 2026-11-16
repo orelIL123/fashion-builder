@@ -11,6 +11,7 @@ const GARMENTS = {
   raglan:    {name:'Raglan tee',    sub:"Men's crew neck",               glb:'assets/shirt.glb',    pattern:null, sleeve:'raglan'},
   oversized: {name:'Oversized tee', sub:"Men's crew neck · drop shoulder", glb:'assets/fb/shirt.glb', pattern:'assets/fb/pattern.json', sleeve:'set-in'},
   hoodie:    {name:'Pullover hoodie', sub:'Unisex · set-in sleeve · kangaroo pocket', glb:'assets/hoodie/hoodie.glb', pattern:'assets/hoodie/pattern.json', sleeve:'set-in', chart:'gildan18500'},
+  jersey:    {name:'Football jersey', sub:'Replica fit · set-in short sleeve · crew collar', glb:'assets/jersey/jersey.glb', pattern:'assets/jersey/pattern.json', sleeve:'set-in', chart:'jersey'},
 };
 let GID = new URLSearchParams(location.search).get('g') || 'raglan'; if (!GARMENTS[GID]) GID = 'raglan';
 let PATTERN = null;
@@ -742,15 +743,17 @@ const crumpleN = mkTex(heightToNormal(crumpleHeight(512),512,9), 3.2);
 sheetTex = new THREE.CanvasTexture(tex); insideTex = new THREE.CanvasTexture(texIn);
 for (const t of [sheetTex, insideTex]){ t.flipY = false; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = ANISO; }
 
-const U = { uCrumple:{value:crumpleN}, uCrumpleMat:{value:crumpleN.matrix}, uWrinkle:{value:1.6}, uBright:{value:1}, uContrast:{value:1}, insideMap:{value:insideTex} };
+const U = { uCrumple:{value:crumpleN}, uCrumpleMat:{value:crumpleN.matrix}, uWrinkle:{value:1.6}, uBright:{value:1}, uContrast:{value:1}, insideMap:{value:insideTex}, uInsideAttr:{value:0} };
 crumpleN.updateMatrix();
 function makeFabric(normal){
   const m = new THREE.MeshPhysicalMaterial({ map:sheetTex, normalMap:normal, normalScale:new THREE.Vector2(0.5,0.5), roughness:0.88, metalness:0,
     sheen:1, sheenRoughness:0.62, sheenColor:new THREE.Color(0.5,0.5,0.5), side:THREE.DoubleSide, envMapIntensity:0.85 });
   m.onBeforeCompile = sh => { Object.assign(sh.uniforms, U);
-    sh.vertexShader = 'varying float vInside;\n' + sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
+    // Which side of the cloth: garments that ship an _INSIDE vertex attribute (1 = inner shell) say so exactly; for the others
+    // a vertex whose normal points towards the body axis is taken to be on the inside.
+    sh.vertexShader = 'varying float vInside; attribute float aInside; uniform float uInsideAttr;\n' + sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
       vec3 wN = normalize(mat3(modelMatrix) * objectNormal); vec3 wP = (modelMatrix * vec4(transformed,1.)).xyz;
-      vInside = dot(wN.xz, wP.xz) < 0. ? 1. : 0.;`);
+      vInside = uInsideAttr > 0.5 ? step(0.5, aInside) : (dot(wN.xz, wP.xz) < 0. ? 1. : 0.);`);
     sh.fragmentShader = 'varying float vInside; uniform sampler2D insideMap; uniform sampler2D uCrumple; uniform mat3 uCrumpleMat; uniform float uWrinkle, uBright, uContrast;\n' + sh.fragmentShader
       .replace('#include <map_fragment>', `#ifdef USE_MAP
         bool inSide = (vInside > 0.5) != !gl_FrontFacing;
@@ -764,7 +767,7 @@ function makeFabric(normal){
         normal = normalize(normal + tbn * vec3(cN.xy * 0.5 * uWrinkle, 0.));
         #endif`);
   };
-  m.customProgramCacheKey = () => 'fabric-v3';
+  m.customProgramCacheKey = () => 'fabric-v4';
   return m;
 }
 const fabricMat = makeFabric(knitTex('jersey'));
@@ -811,6 +814,7 @@ const onGarment = gltf => {
     o.castShadow = true; o.receiveShadow = true;
     const n = (o.material && o.material.name)||'';
     const isShirt = !!o.geometry.attributes.uv;
+    if (isShirt && o.geometry.attributes._inside){ o.geometry.setAttribute('aInside', o.geometry.attributes._inside); o.geometry.deleteAttribute('_inside'); U.uInsideAttr.value = 1; }
     if (isShirt && PATTERN.mirrorSleeve!==false) fixSleeveUV(o.geometry);
     if (isShirt && (/rib/i.test(n) || /_1$/.test(o.name))) { o.material = ribMat; shirtMeshes.push(o); }
     else if (isShirt) { o.material = fabricMat; shirtMeshes.push(o); }
@@ -1727,6 +1731,10 @@ const SC_PRESETS = {
   // published — the other points are measured from this garment's pattern pieces (fill:'pattern').
   gildan18500: {base:'M', v:{A:55.9, C:71.1, E:86.4}, grade:{A:5.1, C:2.5, E:2.5}, tol:{A:1.2, C:1.5, E:1}, fill:'pattern',
     exact:{A:{'XS':45.7, 'S':50.8, 'M':55.9, 'L':61.0, 'XL':66.0, '2XL':71.1, '3XL':76.2}, C:{'XS':66.0, 'S':68.6, 'M':71.1, 'L':73.7, 'XL':76.2, '2XL':78.7, '3XL':81.3}, E:{'XS':82.6, 'S':83.8, 'M':86.4, 'L':88.9, 'XL':91.4, '2XL':94.0, '3XL':96.5}}}, // official published values per size (the grade above only drives edits)
+  // Adult football jersey, regular fit — Arvion Apparel teamwear size guide (arvionapparel.com/size-guide, garment laid flat):
+  // half chest and HPS length are the published values; the other points are measured from this jersey's pattern pieces.
+  jersey: {base:'M', v:{A:53, C:72}, grade:{A:3, C:2}, tol:{A:1.5, C:1.5}, fill:'pattern',
+    exact:{A:{'XS':47, 'S':50, 'M':53, 'L':56, 'XL':59, '2XL':62, '3XL':65}, C:{'XS':68, 'S':70, 'M':72, 'L':74, 'XL':76, '2XL':78, '3XL':80}}},
 };
 const SC = {source: G.chart || 'pattern', base:null, baseSize:'M', rows:null, auto:{}, edited:false, unit:'cm'};
 function chordAt(p, y){ let lo = Infinity, hi = -Infinity; const pts = p.pts, n = pts.length;
@@ -1809,6 +1817,8 @@ function scRender(){
   const det = SC.source==='pattern';
   $('scNote').textContent = det
     ? `${G.name}: the pattern on the table is cut as size ${SC.baseSize} (chest ${scFmt(SC.rows[0].v[bi])} ${SC.unit==='in'?'in':'cm'} flat). The other sizes are graded from it.`
+    : SC.source==='jersey' ? 'Adult football jersey, regular fit (Arvion Apparel teamwear size guide): chest and body length are the published values; the other points are measured from this pattern.'
+    : SC.source==='gildan18500' ? 'Gildan 18500 hoodie: chest, body length and centre-back sleeve are the published values; the other points are measured from this pattern.'
     : `Standard men's crew-neck tee, ${SC.source==='classic'?'classic':'oversized'} fit — not measured from this pattern.`;
   scDrawDiagram($('scDiagram').getContext('2d'), 320, 300, '#d9e4d2', '#f2c14e', '#1b1e1a');
 }
@@ -1857,11 +1867,11 @@ $('sizeChartBtn').onclick = openSizeChart;
 $('scClose').onclick = ()=>{ $('sizeModal').hidden = true; };
 $('sizeModal').addEventListener('click', e=>{ if (e.target === $('sizeModal')) $('sizeModal').hidden = true; });
 addEventListener('keydown', e=>{ if (e.key==='Escape' && !$('sizeModal').hidden) $('sizeModal').hidden = true; });
-{ const o = document.querySelector('#scSource option[value="gildan18500"]'); if (o) o.hidden = G.chart !== 'gildan18500'; }
+for (const id of ['gildan18500','jersey']){ const o = document.querySelector(`#scSource option[value="${id}"]`); if (o) o.hidden = G.chart !== id; }
 $('scSource').onchange = e=>{ SC.source = e.target.value; SC.base = null; scBuild(); try { localStorage.removeItem(scStoreKey); } catch(_){} scRender(); };
 $('scBase').onchange = e=>{ SC.base = e.target.value; scBuild(); scSave(); scRender(); };
 $('scCm').onclick = ()=>{ SC.unit = 'cm'; scRender(); }; $('scIn').onclick = ()=>{ SC.unit = 'in'; scRender(); };
-$('scReset').onclick = ()=>{ SC.base = null; SC.source = G.chart || 'pattern'; try { localStorage.removeItem(scStoreKey); } catch(_){} scBuild(); scRender(); toast(G.chart ? 'Size chart reset to the standard hoodie chart' : 'Size chart reset to the pattern'); };
+$('scReset').onclick = ()=>{ SC.base = null; SC.source = G.chart || 'pattern'; try { localStorage.removeItem(scStoreKey); } catch(_){} scBuild(); scRender(); toast(G.chart ? `Size chart reset to the standard ${GID==='jersey'?'jersey':'hoodie'} chart` : 'Size chart reset to the pattern'); };
 $('scCsv').onclick = ()=> download(new Blob([scCsv()], {type:'text/csv;charset=utf-8'}), `size-chart-${GID}.csv`);
 $('scPng').onclick = async ()=> download(await canvasBlob(scPngCanvas()), `size-chart-${GID}.png`);
 $('scCopy').onclick = async ()=>{ scEnsure(); const tsv = [['Code','Point of measure', ...SIZES, 'Tol ±','Grade'], ...SC.rows.map((R,i)=>[R.c, POMS[i].n, ...R.v.map(scFmt), scFmt(R.tol), scFmt(R.grade)])].map(r=>r.join('\t')).join('\n');

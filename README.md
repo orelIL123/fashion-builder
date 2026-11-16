@@ -77,6 +77,33 @@ Result: 12 pieces — Front (pocket included), Back, Right / Left sleeve, Hood �
 
 **Known limits:** 2D outlines are the union of the piece triangles, closed (1.5 cm), Douglas-Peucker simplified and Chaikin-smoothed at true scale, but they still follow the scan's organic shape rather than drafted straight seams; the kangaroo pocket is part of the front piece (it is fused to the front in the scan); the drawstrings are flattened as half tubes.
 
+## Football jersey (fourth garment, `?g=jersey`)
+`assets/jersey/jersey.glb` + `assets/jersey/pattern.json` are drafted and cloth-simulated with the same Blender pipeline as the oversized tee (`tools/jersey/`, Blender 4.2 LTS):
+
+```bash
+JERSEY_OUT=/tmp/jersey blender -b -P tools/jersey/build.py        # 01 draft + sew, 02 weld + drape on the hanger, 03 smooth + thickness + export
+npx @gltf-transform/cli meshopt /tmp/jersey/jersey_raw.glb assets/jersey/jersey.glb && cp /tmp/jersey/pattern.json assets/jersey/
+blender -b -P tools/jersey/view.py -- /tmp/jersey/jersey_raw.glb /tmp/jersey/v   # 6 check renders
+python3 tools/jersey/shots.py /tmp/jersey/a                                       # whole pieces filled, 4 views in the app
+```
+
+**5 pattern pieces** (true size, 128 cm sheet, 16 px/cm): Front, Back (one piece each, chest to hem), Right / Left sleeve (set-in short sleeve; the cap is sized to the armhole + 4 % ease) and Collar (crew neck band, `id: 'rib'`, its own colour under *Rib colour*). Size M: 52 cm flat chest, 72 cm HPS length, 22.7 cm sleeve.
+
+**Size chart:** defaults to *Standard · football jersey (Arvion teamwear)*, adult regular fit from the [Arvion Apparel size guide](https://arvionapparel.com/size-guide/) (garment laid flat): half chest XS–3XL 47 / 50 / 53 / 56 / 59 / 62 / 65 cm and length 68 … 80 cm are the published values; the other points are measured from the jersey's own pieces.
+
+**Inside vs outside:** the GLB carries an `_INSIDE` vertex attribute (1 on the inner shell made by the thickness step). When a garment ships it, the app uses it to decide which print side (Outside / Inside) a fragment shows, instead of the "normal points towards the body axis" guess, which painted patches of the inside colour on sleeves and armholes.
+
+### Swapping in your own jersey model
+Drop a new `assets/jersey/jersey.glb` (and `pattern.json` if the pieces change) and nothing else needs editing. The file has to follow these rules:
+- **glTF 2.0 binary**, metres, Y up, front of the shirt facing +Z, centred roughly on the origin (the app re-centres and frames it). meshopt compression is fine.
+- **Fabric meshes have `TEXCOORD_0`.** Meshes without UVs are treated as the hanger (any mesh named `*hook*` is the hook). A fabric mesh whose material name contains `rib` (or whose name ends in `_1`) is the collar and takes the rib material / colour.
+- **UV islands are the pattern pieces, at true scale:** one UV unit = `sheetCm` cm (128 cm sheet → 1 cm = 1/128 UV). Islands must not overlap. `pattern.json` outlines are in sheet cm, measured from the bottom of the sheet: x = u × sheetCm, y = (1 − v) × sheetCm with glTF's top-down v.
+- **`pattern.json`:** `{"sheetCm":128, "pxPerCm":16, "mirrorSleeve":false, "labels":"wearer", "pieces":[{"id":"front"|"back"|"sleeveR"|"sleeveL"|"rib", "label":"Front"|…|"Collar", "outline":[[x_cm,y_cm],…], "bbox":[x0,y0,x1,y1]}]}`. The ids drive the size chart (`front`, `back`, `sleeveR/L`, `rib`). With `labels:"wearer"` the sleeve ids name the wearer's side; without it the labels are swapped (left/right as seen from the front); `mirrorSleeve:false` turns off the u-mirror the Blender-built tees (and this jersey) apply to the right sleeve island.
+- **Closed, double-sided cloth:** give the cloth real thickness (solidify, both shells + rims) so nothing looks torn from any angle, and add a float vertex attribute `_INSIDE` (1 = inner shell, 0 = outer) so prints land on the right side. Without it the app falls back to the normal-direction guess.
+- Keep it under ~200k triangles / ~3 MB after meshopt so it loads fast on phones.
+
+**Known limits:** the drape is a simulation on a hanger, so the sleeves fold a little and the back has hanging folds; the collar is a crew band (no V-neck or polo collar yet); there are no separate cuff or hem pieces (hems are part of the body and sleeves).
+
 ## Vendored libraries
 `assets/vendor/three.fb.min.js` is built from `src/vendor/three-entry.js`. If `app.js` starts using a `THREE.*` name that is not exported there, `build.py` stops and names it: add it to the entry file and run `src/vendor/build.sh` (needs Node 18+).
 
@@ -93,6 +120,7 @@ Result: 12 pieces — Front (pocket included), Back, Right / Left sleeve, Hood �
 | `assets/shirt.glb`, `assets/pattern.json` | raglan tee + hanger (meshopt-compressed) and its pattern pieces |
 | `assets/fb/` | oversized tee (second garment) |
 | `assets/hoodie/` | pullover hoodie (third garment, from a 3D scan) — `tools/hoodie-from-scan/` rebuilds it |
+| `assets/jersey/` | football jersey (fourth garment, drafted + cloth-simulated) — `tools/jersey/` rebuilds it |
 | `assets/vendor/` | three.js r170 bundle (MIT) and JSZip (MIT / GPLv3) |
 | `src/vendor/` | entry file + script that rebuild the three.js bundle |
 | `tests/` | Playwright checks (`speed_coverage_sizechart_test.py` covers speed, dead zones and the size chart) |
