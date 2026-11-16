@@ -14,9 +14,10 @@ const GARMENTS = {
   jersey:    {name:'Football jersey', sub:'Replica fit · set-in short sleeve · crew collar', glb:'assets/jersey/jersey.glb', pattern:'assets/jersey/pattern.json', sleeve:'set-in', chart:'jersey'},
   // CLO 3D garments (draped on an avatar, plain white — original prints, stripes and logos removed); tools/clo-zprj/ rebuilds them
   raglanjersey: {name:'Raglan football jersey', sub:"Men's athletic fit · raglan sleeve · rib crew collar", glb:'assets/jersey-raglan/jersey.glb', pattern:'assets/jersey-raglan/pattern.json', sleeve:'raglan', chart:'jersey'},
-  womenjersey:  {name:"Women's football jersey", sub:'Fitted · set-in sleeve · yokes, side and underarm panels', glb:'assets/jersey-women/jersey.glb', pattern:'assets/jersey-women/pattern.json', sleeve:'set-in', chart:'jerseyWomen'},
+  setinjersey:  {name:'Football jersey · set-in sleeve', sub:'Set-in short sleeve · shoulder yokes · side and underarm panels', glb:'assets/jersey-setin/jersey.glb', pattern:'assets/jersey-setin/pattern.json', sleeve:'set-in', chart:'jersey'},
 };
-let GID = new URLSearchParams(location.search).get('g') || 'raglan'; if (!GARMENTS[GID]) GID = 'raglan';
+const GALIAS = {womenjersey:'setinjersey'}; // old links keep working
+let GID = new URLSearchParams(location.search).get('g') || 'raglan'; if (GALIAS[GID]){ GID = GALIAS[GID]; try { const u = new URL(location.href); u.searchParams.set('g', GID); history.replaceState(null, '', u); } catch(_){} } if (!GARMENTS[GID]) GID = 'raglan';
 let PATTERN = null;
 if (GARMENTS[GID].pattern){ try { const r = await fetch(GARMENTS[GID].pattern); if (r.ok) PATTERN = await r.json(); } catch(_){} if (!PATTERN) GID = 'raglan'; }
 if (!PATTERN) PATTERN = __PATTERN__;
@@ -1738,10 +1739,6 @@ const SC_PRESETS = {
   // half chest and HPS length are the published values; the other points are measured from this jersey's pattern pieces.
   jersey: {base:'M', v:{A:53, C:72}, grade:{A:3, C:2}, tol:{A:1.5, C:1.5}, fill:'pattern',
     exact:{A:{'XS':47, 'S':50, 'M':53, 'L':56, 'XL':59, '2XL':62, '3XL':65}, C:{'XS':68, 'S':70, 'M':72, 'L':74, 'XL':76, '2XL':78, '3XL':80}}},
-  // Women's football jersey — MAJOR teamwear women's size guide (majorsports.gg/en/size-guide, garment laid flat), UK sizes
-  // mapped XS=6, S=8, M=10, L=12, XL=14, 2XL=16, 3XL=18. Half chest and length are published; the rest is measured from the pattern.
-  jerseyWomen: {base:'M', v:{A:49.5, C:65.5}, grade:{A:2.5, C:2}, tol:{A:1.5, C:1.5}, fill:'pattern',
-    exact:{A:{'XS':44.5, 'S':47, 'M':49.5, 'L':52, 'XL':54.5, '2XL':57, '3XL':59.5}, C:{'XS':59.5, 'S':63, 'M':65.5, 'L':68, 'XL':70, '2XL':72, '3XL':73.5}}},
 };
 const SC = {source: G.chart || 'pattern', base:null, baseSize:'M', rows:null, auto:{}, edited:false, unit:'cm'};
 function chordAt(p, y){ let lo = Infinity, hi = -Infinity; const pts = p.pts, n = pts.length;
@@ -1826,7 +1823,6 @@ function scRender(){
   $('scNote').textContent = det
     ? `${G.name}: the pattern on the table is cut as size ${SC.baseSize} (chest ${scFmt(SC.rows[0].v[bi])} ${SC.unit==='in'?'in':'cm'} flat). The other sizes are graded from it.`
     : SC.source==='jersey' ? 'Adult football jersey, regular fit (Arvion Apparel teamwear size guide): chest and body length are the published values; the other points are measured from this pattern.'
-    : SC.source==='jerseyWomen' ? "Women's football jersey (MAJOR teamwear women's size guide, UK 6–18 shown as XS–3XL): chest and body length are the published values; the other points are measured from this pattern."
 
     : SC.source==='gildan18500' ? 'Gildan 18500 hoodie: chest, body length and centre-back sleeve are the published values; the other points are measured from this pattern.'
     : `Standard men's crew-neck tee, ${SC.source==='classic'?'classic':'oversized'} fit — not measured from this pattern.`;
@@ -1877,11 +1873,11 @@ $('sizeChartBtn').onclick = openSizeChart;
 $('scClose').onclick = ()=>{ $('sizeModal').hidden = true; };
 $('sizeModal').addEventListener('click', e=>{ if (e.target === $('sizeModal')) $('sizeModal').hidden = true; });
 addEventListener('keydown', e=>{ if (e.key==='Escape' && !$('sizeModal').hidden) $('sizeModal').hidden = true; });
-for (const id of ['gildan18500','jersey','jerseyWomen']){ const o = document.querySelector(`#scSource option[value="${id}"]`); if (o) o.hidden = G.chart !== id; }
+for (const id of ['gildan18500','jersey']){ const o = document.querySelector(`#scSource option[value="${id}"]`); if (o) o.hidden = G.chart !== id; }
 $('scSource').onchange = e=>{ SC.source = e.target.value; SC.base = null; scBuild(); try { localStorage.removeItem(scStoreKey); } catch(_){} scRender(); };
 $('scBase').onchange = e=>{ SC.base = e.target.value; scBuild(); scSave(); scRender(); };
 $('scCm').onclick = ()=>{ SC.unit = 'cm'; scRender(); }; $('scIn').onclick = ()=>{ SC.unit = 'in'; scRender(); };
-$('scReset').onclick = ()=>{ SC.base = null; SC.source = G.chart || 'pattern'; try { localStorage.removeItem(scStoreKey); } catch(_){} scBuild(); scRender(); toast(G.chart ? `Size chart reset to the standard ${G.chart==='gildan18500'?'hoodie':G.chart==='jerseyWomen'?"women's jersey":'jersey'} chart` : 'Size chart reset to the pattern'); };
+$('scReset').onclick = ()=>{ SC.base = null; SC.source = G.chart || 'pattern'; try { localStorage.removeItem(scStoreKey); } catch(_){} scBuild(); scRender(); toast(G.chart ? `Size chart reset to the standard ${G.chart==='gildan18500'?'hoodie':'jersey'} chart` : 'Size chart reset to the pattern'); };
 $('scCsv').onclick = ()=> download(new Blob([scCsv()], {type:'text/csv;charset=utf-8'}), `size-chart-${GID}.csv`);
 $('scPng').onclick = async ()=> download(await canvasBlob(scPngCanvas()), `size-chart-${GID}.png`);
 $('scCopy').onclick = async ()=>{ scEnsure(); const tsv = [['Code','Point of measure', ...SIZES, 'Tol ±','Grade'], ...SC.rows.map((R,i)=>[R.c, POMS[i].n, ...R.v.map(scFmt), scFmt(R.tol), scFmt(R.grade)])].map(r=>r.join('\t')).join('\n');

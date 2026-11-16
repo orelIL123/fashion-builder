@@ -1,4 +1,4 @@
-"""Shared check for the CLO 3D jerseys (?g=raglanjersey, ?g=womenjersey): the garment loads with all its pattern pieces on the table,
+"""Shared check for the CLO 3D jerseys (?g=raglanjersey, ?g=setinjersey): the garment loads with all its pattern pieces on the table,
 the mesh is plain white (no original prints/stripes/logos), a red print on the front piece shows on the 3D front only, a blue print on
 the back piece shows on the 3D back only, every piece takes paint, the pattern sheet exports, and the size chart defaults to the
 garment's standard chart. Screenshots go to FB_SHOTS when set. Run a local server first: python3 -m http.server 8765"""
