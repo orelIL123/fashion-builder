@@ -121,6 +121,7 @@ Drop a new `assets/jersey/jersey.glb` (and `pattern.json` if the pieces change) 
 | `assets/fb/` | oversized tee (second garment) |
 | `assets/hoodie/` | pullover hoodie (third garment, from a 3D scan) — `tools/hoodie-from-scan/` rebuilds it |
 | `assets/jersey/` | football jersey (fourth garment, drafted + cloth-simulated) — `tools/jersey/` rebuilds it |
+| `assets/jersey-raglan/`, `assets/jersey-women/` | raglan and women's football jerseys (`?g=raglanjersey`, `?g=womenjersey`), read straight from CLO 3D `.zprj` projects and shipped plain white — `tools/clo-zprj/` rebuilds them |
 | `assets/vendor/` | three.js r170 bundle (MIT) and JSZip (MIT / GPLv3) |
 | `src/vendor/` | entry file + script that rebuild the three.js bundle |
 | `tests/` | Playwright checks (`speed_coverage_sizechart_test.py` covers speed, dead zones and the size chart) |

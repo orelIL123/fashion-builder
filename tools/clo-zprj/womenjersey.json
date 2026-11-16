@@ -1,0 +1,100 @@
+{
+ "sheetCm": 128,
+ "pieces": [
+  {
+   "src": "Body_Front_18",
+   "id": "front",
+   "label": "Front"
+  },
+  {
+   "src": "Body_Back_9",
+   "id": "back",
+   "label": "Back"
+  },
+  {
+   "src": "Body_Back_6",
+   "id": "backLow",
+   "label": "Back \u00b7 lower panel"
+  },
+  {
+   "src": "Sleeves_9",
+   "id": "sleeveR",
+   "label": "Right sleeve"
+  },
+  {
+   "src": "Sleeves_11",
+   "id": "sleeveL",
+   "label": "Left sleeve"
+  },
+  {
+   "src": "Body_Front_19",
+   "id": "yokeR",
+   "label": "Shoulder yoke \u00b7 right"
+  },
+  {
+   "src": "Body_Front_21",
+   "id": "yokeL",
+   "label": "Shoulder yoke \u00b7 left"
+  },
+  {
+   "src": "Body_Front_12",
+   "id": "sideR",
+   "label": "Side panel \u00b7 right"
+  },
+  {
+   "src": "Body_Front_9",
+   "id": "sideL",
+   "label": "Side panel \u00b7 left"
+  },
+  {
+   "src": "Body_Front_13",
+   "id": "sideLowR",
+   "label": "Side panel \u00b7 right lower"
+  },
+  {
+   "src": "Body_Front_11",
+   "id": "sideLowL",
+   "label": "Side panel \u00b7 left lower"
+  },
+  {
+   "src": "Body_Front_4",
+   "id": "neckR",
+   "label": "Front neck insert \u00b7 right"
+  },
+  {
+   "src": "Body_Front_6",
+   "id": "neckL",
+   "label": "Front neck insert \u00b7 left"
+  },
+  {
+   "src": "Sleeves_2",
+   "id": "uaRF",
+   "label": "Underarm panel \u00b7 right front"
+  },
+  {
+   "src": "Sleeves_6",
+   "id": "uaRB",
+   "label": "Underarm panel \u00b7 right back"
+  },
+  {
+   "src": "Sleeves_4",
+   "id": "uaLF",
+   "label": "Underarm panel \u00b7 left front"
+  },
+  {
+   "src": "Sleeves_8",
+   "id": "uaLB",
+   "label": "Underarm panel \u00b7 left back"
+  },
+  {
+   "src": "Sleeves_10",
+   "id": "cuffR",
+   "label": "Right cuff"
+  },
+  {
+   "src": "Sleeves_12",
+   "id": "cuffL",
+   "label": "Left cuff"
+  }
+ ]
+}

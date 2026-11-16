@@ -1,0 +1,38 @@
+{
+ "sheetCm": 128,
+ "order": [
+  "front",
+  "back",
+  "sleeveR",
+  "sleeveL",
+  "rib"
+ ],
+ "pieces": [
+  {
+   "src": "Pattern2D_53006",
+   "id": "front",
+   "label": "Front"
+  },
+  {
+   "src": "Pattern2D_763993",
+   "id": "back",
+   "label": "Back"
+  },
+  {
+   "src": "Pattern2D_2008391",
+   "id": "sleeveR",
+   "label": "Right sleeve"
+  },
+  {
+   "src": "Pattern2D_2008390",
+   "id": "sleeveL",
+   "label": "Left sleeve"
+  },
+  {
+   "src": "Pattern2D_2707657",
+   "id": "rib",
+   "label": "Collar",
+   "rib": true
+  }
+ ]
+}
